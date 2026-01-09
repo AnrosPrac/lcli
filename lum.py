@@ -8,29 +8,10 @@ import websockets
 import getpass
 from pathlib import Path
 import time
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+
 
 BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
 
-
-class CodeWatcher(FileSystemEventHandler):
-    def __init__(self, username, filename, ws, loop):
-        self.username = username
-        self.filename = filename
-        self.ws = ws
-        self.loop = loop
-
-    def on_modified(self, event):
-        if not event.is_directory and event.src_path.endswith(self.filename):
-            try:
-                content = Path(self.filename).read_text()
-                asyncio.run_coroutine_threadsafe(
-                    self.ws.send(json.dumps({"code": content, "file": self.filename})), 
-                    self.loop
-                )
-            except Exception as e:
-                print(f"Update failed: {e}")
 
 class StreamHandler:
     async def start_broadcast(self, filename):
@@ -38,32 +19,58 @@ class StreamHandler:
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/source/{username}"
         
-        async with websockets.connect(uri) as ws:
-            print(f"[*] Live Stream Active: Anyone can run 'lum follow {username}'")
-            loop = asyncio.get_running_loop()
-            event_handler = CodeWatcher(username, filename, ws, loop)
-            observer = Observer()
-            observer.schedule(event_handler, path=".", recursive=False)
-            observer.start()
+        # Adding extra_headers to ensure the connection is never rejected by Render
+        async with websockets.connect(uri, extra_headers={"Origin": BASE_URL}) as ws:
+            print(f"[*] ULTRA-LOW LATENCY STREAM: Active")
+            print(f"[*] Spectators can run: lum follow {username}")
+            last_content = ""
+            
             try:
-                while True: await asyncio.sleep(1)
-            except: observer.stop()
-            observer.join()
+                while True:
+                    if os.path.exists(filename):
+                        content = Path(filename).read_text()
+                        if content != last_content:
+                            # Send content + precise timestamp for speed measurement
+                            await ws.send(json.dumps({
+                                "code": content, 
+                                "file": filename,
+                                "ts": time.time() 
+                            }))
+                            last_content = content
+                    # 100ms = 10 checks per second. Feels like real-time typing.
+                    await asyncio.sleep(0.1)
+            except Exception as e:
+                print(f"\n[!] Stream stopped: {e}")
 
     async def follow_user(self, target_user):
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/watch/{target_user}"
-        async with websockets.connect(uri) as ws:
+        
+        async with websockets.connect(uri, extra_headers={"Origin": BASE_URL}) as ws:
             os.system('clear' if os.name == 'posix' else 'cls')
             print(f"--- SPECTATING: {target_user} --- (Ctrl+C to stop)")
+            
             try:
                 while True:
-                    data = json.loads(await ws.recv())
-                    if data["type"] == "live_code":
+                    raw_data = await ws.recv()
+                    data = json.loads(raw_data)
+                    
+                    if data.get("type") == "live_code":
+                        # Calculate Round-Trip Latency
+                        latency = 0
+                        if "ts" in data:
+                            latency = (time.time() - data["ts"]) * 1000
+                        
+                        # Use ANSI colors for the speed meter: Green if < 200ms, Yellow/Red if slower
+                        speed_color = "\033[92m" if latency < 200 else "\033[93m"
+                        
                         os.system('clear' if os.name == 'posix' else 'cls')
-                        print(f"--- FILE: {data['file']} | USER: {target_user} ---\n")
+                        print(f"--- FILE: {data['file']} | USER: {target_user} | SPEED: {speed_color}{latency:.0f}ms\033[0m ---")
+                        print("-" * 60)
                         print(data["content"])
-            except: print(f"\n[!] Stream ended.")
+                        print("-" * 60)
+            except Exception as e: 
+                print(f"\n[!] Stream ended: {e}")
 class LumCLI:
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=120.0) # Increased timeout for Graphviz rendering
