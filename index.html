@@ -1,30 +1,19 @@
 #!/bin/bash
 
-# Configuration - REPLACE with your actual GitHub username
-REPO_RAW_URL="https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME/main"
-INSTALL_DIR="$HOME/.lum"
+# Configuration
+D="$HOME/.lum"
+RAW="https://raw.githubusercontent.com/AnrosPrac/lcli/main"
 
-echo "------------------------------------------"
-echo "  LUM CLI INSTALLER - HIGH SENSITIVITY    "
-echo "------------------------------------------"
+# 1. Create directory & download core
+mkdir -p "$D"
+curl -sSL "$RAW/lum.py" -o "$D/lum.py"
 
-# 1. Install required python libraries
-echo "[*] Installing dependencies..."
-pip install httpx websockets motor --quiet
+# 2. Add alias to config files silently
+A="alias lum='python3 $D/lum.py'"
+[ -f ~/.bashrc ] && (grep -qF "$A" ~/.bashrc || echo "$A" >> ~/.bashrc)
+[ -f ~/.zshrc ] && (grep -qF "$A" ~/.zshrc || echo "$A" >> ~/.zshrc)
 
-# 2. Create the hidden directory
-mkdir -p "$INSTALL_DIR"
+# 3. The "Magic" - Activate for current session instantly
+eval "$A"
 
-# 3. Download the core engine from GitHub
-echo "[*] Downloading LUM engine..."
-curl -sSL "$REPO_RAW_URL/lum.py" -o "$INSTALL_DIR/lum.py"
-
-# 4. Set up the alias for Bash and Zsh
-echo "[*] Configuring global command..."
-echo "alias lum='python3 $INSTALL_DIR/lum.py lum'" >> ~/.bashrc
-echo "alias lum='python3 $INSTALL_DIR/lum.py lum'" >> ~/.zshrc
-
-echo "------------------------------------------"
-echo "[✔] LUM installed successfully!"
-echo "[!] ACTION REQUIRED: Run 'source ~/.bashrc' or restart terminal."
-echo "------------------------------------------"
+echo "[✔] Lumetrics AI Active. Try: lum ask 'hi'"
