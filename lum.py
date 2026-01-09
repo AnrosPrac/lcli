@@ -48,13 +48,21 @@ class StreamHandler:
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/watch/{target_user}"
         
-        # Cross-version compatible connection
-        try:
-            ws_conn = websockets.connect(uri, extra_headers={"Origin": BASE_URL})
-        except TypeError:
-            ws_conn = websockets.connect(uri, additional_headers={"Origin": BASE_URL})
+        # Use a dictionary to dynamically pick the right keyword for your version
+        params = {"Origin": BASE_URL}
+        
+        # This is the 'Master Fix': 
+        # It checks if the library is the new version (additional_headers) 
+        # or old (extra_headers) before connecting.
+        if hasattr(websockets, "connect"):
+            try:
+                # Try the modern 3.11+ way first
+                ws = await websockets.connect(uri, additional_headers=params)
+            except TypeError:
+                # Fallback to the old way
+                ws = await websockets.connect(uri, extra_headers=params)
 
-        async with ws_conn as ws:
+        async with ws:
             os.system('clear' if os.name == 'posix' else 'cls')
             print(f"--- SPECTATING: {target_user} --- (Ctrl+C to stop)")
             try:
