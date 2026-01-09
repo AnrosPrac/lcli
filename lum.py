@@ -19,25 +19,27 @@ class StreamHandler:
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/source/{username}"
         
-        # Adding extra_headers to ensure the connection is never rejected by Render
-        async with websockets.connect(uri, extra_headers={"Origin": BASE_URL}) as ws:
+        # Cross-version compatible connection
+        try:
+            ws_conn = websockets.connect(uri, extra_headers={"Origin": BASE_URL})
+        except TypeError:
+            ws_conn = websockets.connect(uri, additional_headers={"Origin": BASE_URL})
+
+        async with ws_conn as ws:
             print(f"[*] ULTRA-LOW LATENCY STREAM: Active")
             print(f"[*] Spectators can run: lum follow {username}")
             last_content = ""
-            
             try:
                 while True:
                     if os.path.exists(filename):
                         content = Path(filename).read_text()
                         if content != last_content:
-                            # Send content + precise timestamp for speed measurement
                             await ws.send(json.dumps({
                                 "code": content, 
                                 "file": filename,
                                 "ts": time.time() 
                             }))
                             last_content = content
-                    # 100ms = 10 checks per second. Feels like real-time typing.
                     await asyncio.sleep(0.1)
             except Exception as e:
                 print(f"\n[!] Stream stopped: {e}")
@@ -46,29 +48,25 @@ class StreamHandler:
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/watch/{target_user}"
         
-        async with websockets.connect(uri, extra_headers={"Origin": BASE_URL}) as ws:
+        # Cross-version compatible connection
+        try:
+            ws_conn = websockets.connect(uri, extra_headers={"Origin": BASE_URL})
+        except TypeError:
+            ws_conn = websockets.connect(uri, additional_headers={"Origin": BASE_URL})
+
+        async with ws_conn as ws:
             os.system('clear' if os.name == 'posix' else 'cls')
             print(f"--- SPECTATING: {target_user} --- (Ctrl+C to stop)")
-            
             try:
                 while True:
                     raw_data = await ws.recv()
                     data = json.loads(raw_data)
-                    
                     if data.get("type") == "live_code":
-                        # Calculate Round-Trip Latency
-                        latency = 0
-                        if "ts" in data:
-                            latency = (time.time() - data["ts"]) * 1000
-                        
-                        # Use ANSI colors for the speed meter: Green if < 200ms, Yellow/Red if slower
+                        latency = (time.time() - data.get("ts", time.time())) * 1000
                         speed_color = "\033[92m" if latency < 200 else "\033[93m"
-                        
                         os.system('clear' if os.name == 'posix' else 'cls')
                         print(f"--- FILE: {data['file']} | USER: {target_user} | SPEED: {speed_color}{latency:.0f}ms\033[0m ---")
-                        print("-" * 60)
-                        print(data["content"])
-                        print("-" * 60)
+                        print("-" * 60 + "\n" + data["content"] + "\n" + "-" * 60)
             except Exception as e: 
                 print(f"\n[!] Stream ended: {e}")
 class LumCLI:
