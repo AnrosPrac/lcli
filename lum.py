@@ -2,7 +2,10 @@ import sys
 import os
 import httpx
 import asyncio
+import json
 import re
+import websockets
+import getpass
 from pathlib import Path
 
 BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
@@ -50,6 +53,41 @@ class LumCLI:
             print(f"[!] Connection failed: {str(e)}")
             return None
 
+
+    async def start_chat(self, channel, password):
+        username = getpass.getuser()
+        # Convert https to wss for the socket connection
+        ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
+        uri = f"{ws_url}/chat/{channel}/{password}/{username}"
+        
+        try:
+            async with websockets.connect(uri) as ws:
+                os.system('clear' if os.name == 'posix' else 'cls')
+                print(f"--- Channel: {channel} | User: {username} ---")
+                print("[!] Type message and hit Enter. Type '/exit' to quit.\n")
+
+                async def receive():
+                    while True:
+                        try:
+                            msg_raw = await ws.recv()
+                            data = json.loads(msg_raw)
+                            # Blue for users, Grey for system
+                            color = "\033[94m" if data["type"] == "chat" else "\033[90m"
+                            print(f"\r{color}[{data['user']}]:\033[0m {data['msg']}\n\033[92m> \033[0m", end="", flush=True)
+                        except: break
+
+                async def send():
+                    while True:
+                        # Standard input loop
+                        msg = await asyncio.get_event_loop().run_in_executor(None, input, "\033[92m> \033[0m")
+                        if msg.lower() == "/exit":
+                            await ws.close()
+                            break
+                        await ws.send(msg)
+
+                await asyncio.gather(receive(), send())
+        except Exception as e:
+            print(f"[!] Chat disconnected: {e}")
     async def handle_command(self, args):
         if len(args) < 2:
             self.show_help()
@@ -109,6 +147,13 @@ class LumCLI:
             if result:
                 print(f"\n[Lum]: {result}\n")
 
+
+        # 6. CHAT: lum chat <channel> <password>
+        elif cmd == "chat":
+            if len(args) > 2:
+                await self.start_chat(args[1], args[2])
+            else:
+                print("[!] Usage: lum chat <channel_name> <password>")
         # 5. FC (Flowchart): lum fc <filename>
         elif cmd == "fc":
             filename = args[1]
@@ -137,6 +182,7 @@ Lum CLI - AI Co-Pilot
   lum fix <file>                : Fix bugs in an existing file (in-place)
   lum algo <file>               : Extract algorithm logic from code
   lum fc <file>                 : Generate an ISO Flowchart image (PNG)
+  lum chat <room> <pass>        : Join a real-time private study room
         """)
 
 async def main():
