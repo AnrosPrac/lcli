@@ -63,7 +63,7 @@ class LumCLI:
                 print(f"[✔] Code written to {filename}")
 
         # lum explain filename
-        elif cmd == "explain":
+        elif cmd == "ask":
             filename = args[1]
             content = Path(filename).read_text()
             result = await self.run_ai_task("explanation", content)
