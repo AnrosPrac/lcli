@@ -7,9 +7,63 @@ import re
 import websockets
 import getpass
 from pathlib import Path
+import time
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
 
+
+class CodeWatcher(FileSystemEventHandler):
+    def __init__(self, username, filename, ws, loop):
+        self.username = username
+        self.filename = filename
+        self.ws = ws
+        self.loop = loop
+
+    def on_modified(self, event):
+        if not event.is_directory and event.src_path.endswith(self.filename):
+            try:
+                content = Path(self.filename).read_text()
+                asyncio.run_coroutine_threadsafe(
+                    self.ws.send(json.dumps({"code": content, "file": self.filename})), 
+                    self.loop
+                )
+            except Exception as e:
+                print(f"Update failed: {e}")
+
+class StreamHandler:
+    async def start_broadcast(self, filename):
+        username = getpass.getuser()
+        ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
+        uri = f"{ws_url}/stream/source/{username}"
+        
+        async with websockets.connect(uri) as ws:
+            print(f"[*] Live Stream Active: Anyone can run 'lum follow {username}'")
+            loop = asyncio.get_running_loop()
+            event_handler = CodeWatcher(username, filename, ws, loop)
+            observer = Observer()
+            observer.schedule(event_handler, path=".", recursive=False)
+            observer.start()
+            try:
+                while True: await asyncio.sleep(1)
+            except: observer.stop()
+            observer.join()
+
+    async def follow_user(self, target_user):
+        ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
+        uri = f"{ws_url}/stream/watch/{target_user}"
+        async with websockets.connect(uri) as ws:
+            os.system('clear' if os.name == 'posix' else 'cls')
+            print(f"--- SPECTATING: {target_user} --- (Ctrl+C to stop)")
+            try:
+                while True:
+                    data = json.loads(await ws.recv())
+                    if data["type"] == "live_code":
+                        os.system('clear' if os.name == 'posix' else 'cls')
+                        print(f"--- FILE: {data['file']} | USER: {target_user} ---\n")
+                        print(data["content"])
+            except: print(f"\n[!] Stream ended.")
 class LumCLI:
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=120.0) # Increased timeout for Graphviz rendering
@@ -147,7 +201,21 @@ class LumCLI:
             if result:
                 print(f"\n[Lum]: {result}\n")
 
+        # 7. STREAM: lum stream <file>
+        elif cmd == "stream":
+            if len(args) > 1:
+                handler = StreamHandler()
+                await handler.start_broadcast(args[1])
+            else:
+                print("[!] Usage: lum stream <filename>")
 
+        # 8. FOLLOW: lum follow <user>
+        elif cmd == "follow":
+            if len(args) > 1:
+                handler = StreamHandler()
+                await handler.follow_user(args[1])
+            else:
+                print("[!] Usage: lum follow <username>")
         # 6. CHAT: lum chat <channel> <password>
         elif cmd == "chat":
             if len(args) > 2:
@@ -183,6 +251,8 @@ Lum CLI - AI Co-Pilot
   lum algo <file>               : Extract algorithm logic from code
   lum fc <file>                 : Generate an ISO Flowchart image (PNG)
   lum chat <room> <pass>        : Join a real-time private study room
+  lum stream <file>             : Start streaming your typing live
+  lum follow <user>             : Watch a student/teacher code in real-time
         """)
 
 async def main():
