@@ -236,7 +236,7 @@ class LumCLI:
         except Exception as e:
             print(f"[!] Chat disconnected: {e}")
     async def handle_command(self, args):
-        if len(args) < 2:
+        if len(args) == 0:
             self.show_help()
             return
 
