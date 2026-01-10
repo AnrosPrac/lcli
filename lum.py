@@ -13,18 +13,6 @@ import time
 
 BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
 
-class Config:
-    CONFIG_PATH = Path.home() / ".lum_cfg"
-
-    @classmethod
-    def save_token(cls, token):
-        cls.CONFIG_PATH.write_text(json.dumps({"token": token}))
-
-    @classmethod
-    def get_token(cls):
-        if cls.CONFIG_PATH.exists():
-            return json.loads(cls.CONFIG_PATH.read_text()).get("token")
-        return None
 
 
 class StreamHandler:
@@ -93,11 +81,7 @@ class StreamHandler:
                 print(f"\n[!] Stream ended: {e}")
 class LumCLI:
     def __init__(self):
-        self.token = Config.get_token()
-        self.client = httpx.AsyncClient(
-            timeout=120.0,
-            headers={"Authorization": f"Bearer {self.token}"} if self.token else {}
-        )
+        self.client = httpx.AsyncClient(timeout=120.0)
 
     def clean_response(self, text):
         """Removes Markdown code blocks (```c, ```json, etc.) from the response."""
@@ -106,19 +90,7 @@ class LumCLI:
         cleaned = re.sub(r"```[a-zA-Z]*\n|```", "", text)
         return cleaned.strip()
     
-    async def login(self):
-        email = input("Email: ")
-        password = getpass.getpass("Password: ")
-        resp = await self.client.post(f"{BASE_URL}/api/v1/auth/login", data={
-            "username": email,
-            "password": password
-        })
-        if resp.status_code == 200:
-            token = resp.json().get("access_token")
-            Config.save_token(token)
-            print("[✔] Login successful.")
-        else:
-            print("[!] Login failed.")
+   
     async def run_ai_task(self, mode, version, input_text):
         payload = {
             "mode": mode,
@@ -303,45 +275,43 @@ class LumCLI:
 
                 # Add this inside the handle_command method in LumCLI class
         elif cmd == "inject":
-            if len(args) < 3:
-                print("[!] Usage: lum inject <filename.txt> <foldername>")
-                return
+                if len(args) < 3:
+                    print("[!] Usage: lum inject <filename.txt> <foldername>")
+                    return
 
-            txt_file, folder_name = args[1], args[2]
+                txt_file, folder_name = args[1], args[2]
 
-            if not os.path.exists(txt_file):
-                print(f"[!] File {txt_file} not found.")
-                return
+                if not os.path.exists(txt_file):
+                    print(f"[!] File {txt_file} not found.")
+                    return
 
-            print(f"[*] Sending batch request to Lum Engine...")
-            with open(txt_file, "r") as f:
-                content = f.read()
+                print(f"[*] Sending batch request to Lum Engine...")
+                with open(txt_file, "r") as f:
+                    content = f.read()
 
-            try:
-                response = await self.client.post(
-                    f"{BASE_URL}/ai/inject",
-                    json={"text_content": content},
-                    timeout=180.0 # High timeout for batch generation
-                )
+                try:
+                    response = await self.client.post(
+                        f"{BASE_URL}/ai/inject",
+                        json={"text_content": content},
+                        timeout=300.0
+                    )
 
-                if response.status_code == 200:
-                    files = response.json().get("files", {})
+                    if response.status_code == 200:
+                        files = response.json().get("files", {})
+                        target_dir = Path(os.getcwd()) / folder_name
+                        target_dir.mkdir(parents=True, exist_ok=True)
+
+                        for filename, code in files.items():
+                            file_path = target_dir / filename
+                            file_path.write_text(code)
+                            print(f"  [+] Created: {folder_name}/{filename}")
+
+                        print(f"\n[✔] Injection Complete! '{folder_name}' created locally.")
+                    else:
+                        print(f"[×] Failed: {response.text}")
+                except Exception as e:
+                    print(f"[!] CLI Error: {e}")
                     
-                    # CLI decides the root: Current Working Directory
-                    target_dir = Path(os.getcwd()) / folder_name
-                    target_dir.mkdir(parents=True, exist_ok=True)
-
-                    for filename, code in files.items():
-                        file_path = target_dir / filename
-                        file_path.write_text(code)
-                        print(f"  [+] Created: {folder_name}/{filename}")
-
-                    print(f"\n[✔] Injection Complete! '{folder_name}' created in your current directory.")
-                else:
-                    print(f"[×] Failed: {response.text}")
-            except Exception as e:
-                print(f"[!] CLI Error: {e}")
-        
         # 8. FOLLOW: lum follow <user>
         elif cmd == "follow":
             if len(args) > 1:
