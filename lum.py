@@ -271,6 +271,35 @@ class LumCLI:
             else:
                 print("[!] Usage: lum stream <filename>")
 
+                # Add this inside the handle_command method in LumCLI class
+        elif cmd == "inject":
+            if len(args) < 3:
+                print("[!] Usage: lum inject <filename.txt> <foldername>")
+                return
+
+            txt_file = args[1]
+            folder_name = args[2]
+
+            if not os.path.exists(txt_file):
+                print(f"[!] File {txt_file} not found.")
+                return
+
+            print(f"[*] Injecting tasks from {txt_file} into {folder_name}...")
+            
+            with open(txt_file, "r") as f:
+                content = f.read()
+
+            response = httpx.post(
+                f"{BASE_URL}/ai/inject",
+                json={"text_content": content, "folder_name": folder_name},
+                timeout=60.0
+            )
+
+            if response.status_code == 200:
+                print(f"[✔] Injection Complete! Folder '{folder_name}' is ready in your JLab workspace.")
+            else:
+                print(f"[×] Injection failed: {response.text}")
+        
         # 8. FOLLOW: lum follow <user>
         elif cmd == "follow":
             if len(args) > 1:
