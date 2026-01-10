@@ -231,9 +231,6 @@ class LumCLI:
             else:
                 print("[!] Usage: lum explain <filename>")
         elif cmd == "game":
-            if len(args) < 2:
-                self.show_arcade_menu() # The menu we designed earlier
-                return
             
             choice = args[1].lower()
             if choice == "logic":
