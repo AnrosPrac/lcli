@@ -237,19 +237,19 @@ class LumCLI:
             
             choice = args[1].lower()
             if choice == "logic":
-                from arcade.logic_battles import start_logic_game
+                from logic_battles import start_logic_game
                 await start_logic_game()
             elif choice == "debug":
-                from arcade.syntax_slasher import start_syntax_game
+                from syntax_slasher import start_syntax_game
                 await start_syntax_game(self)
             elif choice == "regex":
-                from arcade.regex_sniper import start_regex_game
+                from regex_sniper import start_regex_game
                 await start_regex_game()
             elif choice == "overflow":
-                from arcade.memory_snake import start_overflow_game
+                from memory_snake import start_overflow_game
                 start_overflow_game()
             elif choice == "stack":
-                from arcade.stack_sorter import start_stack_game
+                from stack_sorter import start_stack_game
                 start_stack_game()
             else:
                 print(f"[!] Unknown game: {choice}")
