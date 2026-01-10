@@ -241,9 +241,15 @@ class LumCLI:
             return
 
         cmd = args[0]
+
+        # 🔐 LOGIN COMMAND (ADD THIS)
+        if cmd == "login":
+            await self.login()
+            return
+
         
         # 1. FIX: lum fix <filename>
-        if cmd == "fix":
+        elif cmd == "fix":
             filename = args[1]
             if os.path.exists(filename):
                 content = Path(filename).read_text()
