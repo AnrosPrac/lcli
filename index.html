@@ -1,19 +1,24 @@
 #!/bin/bash
 
-# Configuration
 D="$HOME/.lum"
 RAW="https://raw.githubusercontent.com/AnrosPrac/lcli/main"
 
-# 1. Create directory & download core
+# 1. Install dependencies first
+# We use python3 -m pip to ensure it targets the correct interpreter
+python3 -m pip install --user httpx websockets pathlib -q
+
+# 2. Create directory & download core
 mkdir -p "$D"
 curl -sSL "$RAW/lum.py" -o "$D/lum.py"
 
-# 2. Add alias to config files silently
+# 3. Add alias to config files
+# We use a more robust check for the alias
 A="alias lum='python3 $D/lum.py'"
-[ -f ~/.bashrc ] && (grep -qF "$A" ~/.bashrc || echo "$A" >> ~/.bashrc)
-[ -f ~/.zshrc ] && (grep -qF "$A" ~/.zshrc || echo "$A" >> ~/.zshrc)
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    [ -f "$rc" ] && ! grep -qF "$A" "$rc" && echo "$A" >> "$rc"
+done
 
-# 3. The "Magic" - Activate for current session instantly
+# 4. The "Magic"
 eval "$A"
 
 echo "[✔] Lumetrics AI Active. Try: lum ask 'hi'"
