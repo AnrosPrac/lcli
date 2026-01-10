@@ -16,16 +16,24 @@ BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
 
 
 class StreamHandler:
+    def __init__(self, token: str):
+        self.token = token
     async def start_broadcast(self, filename):
         username = getpass.getuser()
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/source/{username}"
-        
+        headers = {
+    "Origin": BASE_URL,
+    "Authorization": f"Bearer {self.token}"
+}
+
         # Cross-version compatible connection
         try:
-            ws_conn = websockets.connect(uri, extra_headers={"Origin": BASE_URL})
+            ws_conn = websockets.connect(uri, additional_headers=headers)
+
         except TypeError:
-            ws_conn = websockets.connect(uri, additional_headers={"Origin": BASE_URL})
+            ws_conn = websockets.connect(uri, additional_headers=headers)
+
 
         async with ws_conn as ws:
             print(f"[*] ULTRA-LOW LATENCY STREAM: Active")
@@ -51,7 +59,11 @@ class StreamHandler:
         uri = f"{ws_url}/stream/watch/{target_user}"
         
         # Use a dictionary to dynamically pick the right keyword for your version
-        params = {"Origin": BASE_URL}
+        params = {
+    "Origin": BASE_URL,
+    "Authorization": f"Bearer {self.token}"
+}
+
         
         # This is the 'Master Fix': 
         # It checks if the library is the new version (additional_headers) 
@@ -81,7 +93,18 @@ class StreamHandler:
                 print(f"\n[!] Stream ended: {e}")
 class LumCLI:
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=120.0)
+        self.config_file = Path.home() / ".lum_config"
+        self.token = self._load_local_token()
+        self.client = httpx.AsyncClient(timeout=180.0)
+
+    def _load_local_token(self):
+        if self.config_file.exists():
+            try:
+                data = json.loads(self.config_file.read_text())
+                return data.get("access_token")
+            except:
+                return None
+        return None
 
     def clean_response(self, text):
         """Removes Markdown code blocks (```c, ```json, etc.) from the response."""
@@ -91,6 +114,57 @@ class LumCLI:
         return cleaned.strip()
     
    
+    async def login(self):
+        print("--- Lum Engine Secure Login ---")
+        sidhi_id = input("Sidhi ID: ")
+        password = getpass.getpass("Password: ")
+
+        try:
+            # We hit YOUR Render server, not SidhiLynx directly
+            response = await self.client.post(
+                f"{BASE_URL}/auth/login",
+                json={"sidhi_id": sidhi_id, "password": password}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                config_data = {
+                    "access_token": data["access_token"],
+                    "refresh_token": data["refresh_token"],
+                    "sidhi_id": data["sidhi_id"]
+                }
+                # Save to hidden file in home directory
+                Path(self.config_file).write_text(json.dumps(config_data))
+                print(f"[✔] Authentication successful. Welcome, {data['sidhi_id']}!")
+                self.token = data["access_token"]
+            else:
+                print(f"[×] Login Failed: {response.text}")
+        except Exception as e:
+            print(f"[!] Connection Error: {e}")
+
+    async def run_protected_task(self, endpoint, payload):
+        if not self.token:
+            print("[!] Access Denied: Run 'lum login' first.")
+            return None
+
+        headers = {"Authorization": f"Bearer {self.token}"}
+        
+        try:
+            response = await self.client.post(
+                f"{BASE_URL}{endpoint}", 
+                json=payload, 
+                headers=headers,
+                timeout=180.0
+            )
+            
+            if response.status_code == 401:
+                print("[!] Session expired. Please login again.")
+                return None
+            
+            return response.json()
+        except Exception as e:
+            print(f"[!] Task Error: {e}")
+            return None
     async def run_ai_task(self, mode, version, input_text):
         payload = {
             "mode": mode,
@@ -103,7 +177,8 @@ class LumCLI:
         endpoint = f"{BASE_URL}/ai/execute"
         
         try:
-            response = await self.client.post(endpoint, json=payload)
+            headers = {"Authorization": f"Bearer {self.token}"}
+            response = await self.client.post(endpoint, json=payload, headers=headers)
             
             if response.status_code == 200:
                 # Content-Type Check: Is it an Image (Flowchart) or Text (JSON)?
@@ -123,7 +198,7 @@ class LumCLI:
             print(f"[!] Connection failed: {str(e)}")
             return None
 
-
+   
     async def start_chat(self, channel, password):
         username = getpass.getuser()
         # Convert https to wss for the socket connection
@@ -131,7 +206,9 @@ class LumCLI:
         uri = f"{ws_url}/chat/{channel}/{password}/{username}"
         
         try:
-            async with websockets.connect(uri) as ws:
+            headers = {"Authorization": f"Bearer {self.token}"}
+            async with websockets.connect(uri, additional_headers=headers) as ws:
+
                 os.system('clear' if os.name == 'posix' else 'cls')
                 print(f"--- Channel: {channel} | User: {username} ---")
                 print("[!] Type message and hit Enter. Type '/exit' to quit.\n")
@@ -249,7 +326,12 @@ class LumCLI:
                     
                     print(f"[*] Comparing logic flow...")
                     try:
-                        response = await self.client.post(f"{BASE_URL}/ai/execute", json=payload)
+                        headers = {"Authorization": f"Bearer {self.token}"}
+                        response = await self.client.post(
+                            f"{BASE_URL}/ai/execute",
+                            json=payload,
+                            headers=headers
+                        )
                         if response.status_code == 200:
                             # Use the same cleanup logic as other commands
                             raw_text = response.json().get("output")
@@ -268,8 +350,9 @@ class LumCLI:
         # 7. STREAM: lum stream <file>
         elif cmd == "stream":
             if len(args) > 1:
-                handler = StreamHandler()
+                handler = StreamHandler(self.token)
                 await handler.start_broadcast(args[1])
+
             else:
                 print("[!] Usage: lum stream <filename>")
 
@@ -290,7 +373,13 @@ class LumCLI:
             # Note: Changed endpoint to /ai/format specifically for this task
             endpoint = f"{BASE_URL}/ai/format"
             try:
-                response = await self.client.post(endpoint, json={"text_content": content})
+                headers = {"Authorization": f"Bearer {self.token}"}
+                response = await self.client.post(
+                    endpoint,
+                    json={"text_content": content},
+                    headers=headers
+                )
+
                 if response.status_code == 200:
                     result = response.json().get("output")
                     if result:
@@ -315,11 +404,14 @@ class LumCLI:
                 content = f.read()
 
             try:
+                headers = {"Authorization": f"Bearer {self.token}"}
                 response = await self.client.post(
                     f"{BASE_URL}/ai/inject",
                     json={"text_content": content},
-                    timeout=180.0 # High timeout for batch generation
+                    headers=headers,
+                    timeout=180.0
                 )
+
 
                 if response.status_code == 200:
                     files = response.json().get("files", {})
@@ -354,7 +446,12 @@ class LumCLI:
             # Note: Changed endpoint to /ai/format specifically for this task
             endpoint = f"{BASE_URL}/ai/format"
             try:
-                response = await self.client.post(endpoint, json={"text_content": content})
+                headers = {"Authorization": f"Bearer {self.token}"}
+                response = await self.client.post(
+                    endpoint,
+                    json={"text_content": content},
+                    headers=headers
+                )
                 if response.status_code == 200:
                     result = response.json().get("output")
                     if result:
@@ -367,8 +464,9 @@ class LumCLI:
         # 8. FOLLOW: lum follow <user>
         elif cmd == "follow":
             if len(args) > 1:
-                handler = StreamHandler()
+                handler = StreamHandler(self.token)
                 await handler.follow_user(args[1])
+
             else:
                 print("[!] Usage: lum follow <username>")
         elif cmd == "trace":
