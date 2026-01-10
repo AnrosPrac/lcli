@@ -313,7 +313,32 @@ class LumCLI:
                     print(f"[×] Failed: {response.text}")
             except Exception as e:
                 print(f"[!] CLI Error: {e}")
-                    
+        elif cmd == "format":
+            if len(args) < 2:
+                print("[!] Usage: lum format <filename.txt>")
+                return
+
+            filename = args[1]
+            if not os.path.exists(filename):
+                print(f"[!] File {filename} not found.")
+                return
+
+            content = Path(filename).read_text()
+            print(f"[*] Reformatting {filename} via Lum Engine...")
+            
+            # Note: Changed endpoint to /ai/format specifically for this task
+            endpoint = f"{BASE_URL}/ai/format"
+            try:
+                response = await self.client.post(endpoint, json={"text_content": content})
+                if response.status_code == 200:
+                    result = response.json().get("output")
+                    if result:
+                        Path(filename).write_text(self.clean_response(result))
+                        print(f"[✔] {filename} is now formatted for injection.")
+                else:
+                    print(f"[×] Format failed: {response.text}")
+            except Exception as e:
+                print(f"[!] CLI Error: {e}")         
         # 8. FOLLOW: lum follow <user>
         elif cmd == "follow":
             if len(args) > 1:
