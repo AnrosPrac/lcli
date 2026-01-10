@@ -237,7 +237,6 @@ class LumCLI:
                     code1 = Path(file1).read_text()
                     code2 = Path(file2).read_text()
                     
-                    # Ensure keys match the backend expectations exactly
                     payload = {
                         "mode": "diff",
                         "version": "standard",
@@ -245,14 +244,24 @@ class LumCLI:
                         "input2": code2
                     }
                     
-                    print(f"[*] Comparing logic...")
-                    response = await self.client.post(f"{BASE_URL}/ai/execute", json=payload)
-                    if response.status_code == 200:
-                        result = response.json().get("output")
-                        print(f"\n\033[1;96m[LOGIC DIFF]: {file1} vs {file2}\033[0m")
-                        print("━" * 60 + "\n" + result + "\n" + "━" * 60)
+                    print(f"[*] Comparing logic flow...")
+                    try:
+                        response = await self.client.post(f"{BASE_URL}/ai/execute", json=payload)
+                        if response.status_code == 200:
+                            # Use the same cleanup logic as other commands
+                            raw_text = response.json().get("output")
+                            result = self.clean_response(raw_text)
+                            
+                            print(f"\n\033[1;96m[LOGIC DIFF]: {file1} vs {file2}\033[0m")
+                            print("━" * 60 + "\n" + result + "\n" + "━" * 60)
+                        else:
+                            print(f"[!] Server error: {response.status_code}")
+                    except Exception as e:
+                        print(f"[!] Connection failed: {e}")
                 else:
                     print("[!] One or both files not found.")
+            else:
+                print("[!] Usage: lum diff <file1> <file2>")
         # 7. STREAM: lum stream <file>
         elif cmd == "stream":
             if len(args) > 1:
