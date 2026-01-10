@@ -230,26 +230,7 @@ class LumCLI:
                     print(f"[!] File {filename} not found.")
             else:
                 print("[!] Usage: lum explain <filename>")
-        elif cmd == "game":
-            
-            choice = args[1].lower()
-            if choice == "logic":
-                from logic_battles import start_logic_game
-                await start_logic_game()
-            elif choice == "debug":
-                from syntax_slasher import start_syntax_game
-                await start_syntax_game(self)
-            elif choice == "regex":
-                from regex_sniper import start_regex_game
-                await start_regex_game()
-            elif choice == "overflow":
-                from memory_snake import start_overflow_game
-                start_overflow_game()
-            elif choice == "stack":
-                from stack_sorter import start_stack_game
-                start_stack_game()
-            else:
-                print(f"[!] Unknown game: {choice}")
+        
         elif cmd == "diff":
             if len(args) > 2:
                 file1, file2 = args[1], args[2]
