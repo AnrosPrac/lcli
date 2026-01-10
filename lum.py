@@ -1,3 +1,4 @@
+from itertools import zip_longest
 import sys
 import os
 import httpx
@@ -214,6 +215,39 @@ class LumCLI:
             if result:
                 print(f"\n[Lum]: {result}\n")
 
+        elif cmd == "explain":
+            if len(args) > 1:
+                filename = args[1]
+                if os.path.exists(filename):
+                    content = Path(filename).read_text()
+                    result = await self.run_ai_task("explain", "from_code", content)
+                    if result:
+                        print(f"\n\033[95m[LUM EXPLAINER]: {filename}\033[0m")
+                        print("=" * 60)
+                        print(result)
+                        print("=" * 60)
+                else:
+                    print(f"[!] File {filename} not found.")
+            else:
+                print("[!] Usage: lum explain <filename>")
+        elif cmd == "diff":
+            if len(args) > 2:
+                file1, file2 = args[1], args[2]
+                if os.path.exists(file1) and os.path.exists(file2):
+                    code1 = Path(file1).read_text()
+                    code2 = Path(file2).read_text()
+                    combined_input = f"FILE 1:\n{code1}\n\nFILE 2:\n{code2}"
+                    
+                    result = await self.run_ai_task("diff", "standard", combined_input)
+                    if result:
+                        print(f"\n\033[96m[LOGIC DIFF]: {file1} vs {file2}\033[0m")
+                        print("-" * 60)
+                        print(result)
+                        print("-" * 60)
+                else:
+                    print("[!] One or both files not found.")
+            else:
+                print("[!] Usage: lum diff <file1> <file2>")
         # 7. STREAM: lum stream <file>
         elif cmd == "stream":
             if len(args) > 1:
@@ -229,7 +263,59 @@ class LumCLI:
                 await handler.follow_user(args[1])
             else:
                 print("[!] Usage: lum follow <username>")
-        # 6. CHAT: lum chat <channel> <password>
+        elif cmd == "trace":
+            if len(args) < 2:
+                print("[!] Usage: lum trace <filename>")
+                return
+            
+            filename = args[1]
+            if not os.path.exists(filename):
+                print(f"[!] File {filename} not found.")
+                return
+
+            content = Path(filename).read_text()
+            raw_response = await self.run_ai_task("trace", "standard", content)
+            
+            try:
+                # The AI returns a string, we need to parse it into a list of frames
+                frames = json.loads(raw_response)
+                
+                for i, frame in enumerate(frames):
+                    # 1. Clear Screen and reset cursor to top
+                    print("\033[H\033[J", end="") 
+                    
+                    # 2. Header with Progress Bar
+                    progress = (i + 1) / len(frames)
+                    bar = "█" * int(20 * progress) + "-" * (20 - int(20 * progress))
+                    print(f"\033[1;33mLUM DEBUGGER\033[0m | {filename} | Step {i+1}/{len(frames)} [{bar}]")
+                    print("="*70)
+                    
+                    # 3. Execution Context
+                    print(f"\033[1;32mEXEC LINE:\033[0m {frame.get('line', '??')}")
+                    print(f"\033[1;34mLOGIC:\033[0m {frame.get('explanation', 'Executing...')}")
+                    print("-" * 70)
+                    
+                    # 4. Memory Visualization (Stack & Heap)
+                    print(f"{' [ STACK ] ':-^30}   {' [ HEAP ] ':-^30}")
+                    
+                    stack_data = frame.get('stack', [])
+                    heap_data = frame.get('heap', [])
+                    
+                    for s, h in zip_longest(stack_data, heap_data):
+                        s_line = f"{s['name']}: {s['val']}" if s else ""
+                        h_line = f"{h['addr']} -> {h['val']}" if h else ""
+                        print(f" {s_line:<28} |  {h_line}")
+                    
+                    print("-" * 70)
+                    print(f"\033[1;37mSTDOUT:\033[0m {frame.get('stdout', '')}")
+                    
+                    if i < len(frames) - 1:
+                        input("\n\033[5m[ Press Enter for Next Frame ]\033[0m")
+                    else:
+                        print("\n\033[1;32m[ Execution Finished ]\033[0m")
+                        time.sleep(2)
+            except Exception as e:
+                print(f"[!] Trace Error: Could not parse animation data. \nDetails: {e}")
         elif cmd == "chat":
             if len(args) > 2:
                 await self.start_chat(args[1], args[2])
