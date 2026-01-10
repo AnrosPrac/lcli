@@ -5,7 +5,7 @@ RAW="https://raw.githubusercontent.com/AnrosPrac/lcli/main"
 
 # 1. Install dependencies first
 # We use python3 -m pip to ensure it targets the correct interpreter
-python3 -m pip install --user httpx websockets pathlib -q
+python3 -m pip install --user httpx websockets pathlib -q --no-warn-script-location --disable-pip-version-check
 
 # 2. Create directory & download core
 mkdir -p "$D"
@@ -21,4 +21,4 @@ done
 # 4. The "Magic"
 eval "$A"
 
-echo "[✔] Lumetrics AI Active. Try: lum ask 'hi'"
+echo "Kindly close all terminal windows and reopen them to start using 'lum' command."
