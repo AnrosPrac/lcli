@@ -277,28 +277,40 @@ class LumCLI:
                 print("[!] Usage: lum inject <filename.txt> <foldername>")
                 return
 
-            txt_file = args[1]
-            folder_name = args[2]
+            txt_file, folder_name = args[1], args[2]
 
             if not os.path.exists(txt_file):
                 print(f"[!] File {txt_file} not found.")
                 return
 
-            print(f"[*] Injecting tasks from {txt_file} into {folder_name}...")
-            
+            print(f"[*] Sending batch request to Lum Engine...")
             with open(txt_file, "r") as f:
                 content = f.read()
 
-            response = httpx.post(
-                f"{BASE_URL}/ai/inject",
-                json={"text_content": content, "folder_name": folder_name},
-                timeout=60.0
-            )
+            try:
+                response = await self.client.post(
+                    f"{BASE_URL}/ai/inject",
+                    json={"text_content": content},
+                    timeout=180.0 # High timeout for batch generation
+                )
 
-            if response.status_code == 200:
-                print(f"[✔] Injection Complete! Folder '{folder_name}' is ready in your JLab workspace.")
-            else:
-                print(f"[×] Injection failed: {response.text}")
+                if response.status_code == 200:
+                    files = response.json().get("files", {})
+                    
+                    # CLI decides the root: Current Working Directory
+                    target_dir = Path(os.getcwd()) / folder_name
+                    target_dir.mkdir(parents=True, exist_ok=True)
+
+                    for filename, code in files.items():
+                        file_path = target_dir / filename
+                        file_path.write_text(code)
+                        print(f"  [+] Created: {folder_name}/{filename}")
+
+                    print(f"\n[✔] Injection Complete! '{folder_name}' created in your current directory.")
+                else:
+                    print(f"[×] Failed: {response.text}")
+            except Exception as e:
+                print(f"[!] CLI Error: {e}")
         
         # 8. FOLLOW: lum follow <user>
         elif cmd == "follow":
