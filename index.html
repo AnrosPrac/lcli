@@ -3,17 +3,25 @@
 # Configuration
 D="$HOME/.lum"
 RAW="https://raw.githubusercontent.com/AnrosPrac/lcli/main"
+FILES=("lum.py" "logic_battles.py" "syntax_slasher.py" "regex_sniper.py" "memory_snake.py" "stack_sorter.py")
 
-# 1. Create directory & download core
+# 1. Create directory
 mkdir -p "$D"
-curl -sSL "$RAW/lum.py" -o "$D/lum.py"
 
-# 2. Add alias to config files silently
+# 2. Download all components
+echo "[*] Downloading Lum components to $D..."
+for file in "${FILES[@]}"; do
+    curl -sSL "$RAW/$file" -o "$D/$file"
+    if [ $? -eq 0 ]; then
+        echo "  [✔] Syncing $file"
+    else
+        echo "  [✘] Failed to download $file"
+    fi
+done
+
+# 3. Handle alias
 A="alias lum='python3 $D/lum.py'"
 [ -f ~/.bashrc ] && (grep -qF "$A" ~/.bashrc || echo "$A" >> ~/.bashrc)
-[ -f ~/.zshrc ] && (grep -qF "$A" ~/.zshrc || echo "$A" >> ~/.zshrc)
-
-# 3. The "Magic" - Activate for current session instantly
 eval "$A"
 
-echo "[✔] Lumetrics AI Active. Try: lum ask 'hi'"
+echo -e "\n[✔] Lum CLI Fully Instrumented. Try: lum game logic"
