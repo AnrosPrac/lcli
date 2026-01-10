@@ -236,18 +236,23 @@ class LumCLI:
                 if os.path.exists(file1) and os.path.exists(file2):
                     code1 = Path(file1).read_text()
                     code2 = Path(file2).read_text()
-                    combined_input = f"FILE 1:\n{code1}\n\nFILE 2:\n{code2}"
                     
-                    result = await self.run_ai_task("diff", "standard", combined_input)
-                    if result:
-                        print(f"\n\033[96m[LOGIC DIFF]: {file1} vs {file2}\033[0m")
-                        print("-" * 60)
-                        print(result)
-                        print("-" * 60)
+                    # Ensure keys match the backend expectations exactly
+                    payload = {
+                        "mode": "diff",
+                        "version": "standard",
+                        "input1": code1,
+                        "input2": code2
+                    }
+                    
+                    print(f"[*] Comparing logic...")
+                    response = await self.client.post(f"{BASE_URL}/ai/execute", json=payload)
+                    if response.status_code == 200:
+                        result = response.json().get("output")
+                        print(f"\n\033[1;96m[LOGIC DIFF]: {file1} vs {file2}\033[0m")
+                        print("━" * 60 + "\n" + result + "\n" + "━" * 60)
                 else:
                     print("[!] One or both files not found.")
-            else:
-                print("[!] Usage: lum diff <file1> <file2>")
         # 7. STREAM: lum stream <file>
         elif cmd == "stream":
             if len(args) > 1:
@@ -274,40 +279,44 @@ class LumCLI:
                 return
 
             content = Path(filename).read_text()
-            raw_response = await self.run_ai_task("trace", "standard", content)
+            raw_response = await self.run_ai_task("trace", "from_code", content)
             
+            if not raw_response:
+                print("[!] No data received from server.")
+                return
+
             try:
-                # The AI returns a string, we need to parse it into a list of frames
-                frames = json.loads(raw_response)
+                data = json.loads(raw_response)
+                frames = data.get("frames", []) if isinstance(data, dict) else data
                 
                 for i, frame in enumerate(frames):
-                    # 1. Clear Screen and reset cursor to top
                     print("\033[H\033[J", end="") 
                     
-                    # 2. Header with Progress Bar
                     progress = (i + 1) / len(frames)
                     bar = "█" * int(20 * progress) + "-" * (20 - int(20 * progress))
                     print(f"\033[1;33mLUM DEBUGGER\033[0m | {filename} | Step {i+1}/{len(frames)} [{bar}]")
                     print("="*70)
                     
-                    # 3. Execution Context
-                    print(f"\033[1;32mEXEC LINE:\033[0m {frame.get('line', '??')}")
+                    print(f"\033[1;32mEXEC LINE:\033[0m {frame.get('line_no', '??')}")
                     print(f"\033[1;34mLOGIC:\033[0m {frame.get('explanation', 'Executing...')}")
                     print("-" * 70)
                     
-                    # 4. Memory Visualization (Stack & Heap)
                     print(f"{' [ STACK ] ':-^30}   {' [ HEAP ] ':-^30}")
                     
-                    stack_data = frame.get('stack', [])
+                    stack_data = frame.get('vars', []) 
                     heap_data = frame.get('heap', [])
                     
+                    if isinstance(stack_data, dict):
+                        stack_data = [{"name": k, "val": v} for k, v in stack_data.items()]
+                    
                     for s, h in zip_longest(stack_data, heap_data):
-                        s_line = f"{s['name']}: {s['val']}" if s else ""
-                        h_line = f"{h['addr']} -> {h['val']}" if h else ""
+                        s_line = f"{s['name']}: {s['val']}" if isinstance(s, dict) else str(s or "")
+                        h_line = f"{h['addr']} -> {h['val']}" if isinstance(h, dict) else str(h or "")
                         print(f" {s_line:<28} |  {h_line}")
                     
                     print("-" * 70)
-                    print(f"\033[1;37mSTDOUT:\033[0m {frame.get('stdout', '')}")
+                    if 'stdout' in frame:
+                        print(f"\033[1;37mSTDOUT:\033[0m {frame.get('stdout', '')}")
                     
                     if i < len(frames) - 1:
                         input("\n\033[5m[ Press Enter for Next Frame ]\033[0m")
@@ -315,7 +324,7 @@ class LumCLI:
                         print("\n\033[1;32m[ Execution Finished ]\033[0m")
                         time.sleep(2)
             except Exception as e:
-                print(f"[!] Trace Error: Could not parse animation data. \nDetails: {e}")
+                print(f"[!] Trace Error: UI Rendering failed. \nDetails: {e}")
         elif cmd == "chat":
             if len(args) > 2:
                 await self.start_chat(args[1], args[2])
