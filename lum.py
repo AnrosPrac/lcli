@@ -236,22 +236,31 @@ class LumCLI:
 
         # 2. 📡 Setup Connection
         username = getpass.getuser()
-        # Ensure we use wss:// for secure remote, ws:// for local
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
-        uri = f"{ws_url}/chat/{channel}/{password}/{username}"
-
-        headers = {"Authorization": f"Bearer {self.token}"}
+        
+        # ✅ FIX: Pass token in URL (Bypasses Render header stripping)
+        uri = f"{ws_url}/chat/{channel}/{password}/{username}?token={self.token}"
 
         # 3. 🖥️ Clean UI Start
         os.system('cls' if os.name == 'nt' else 'clear')
         print(f"\033[1;36m=== 💬 LUM SECURE CHAT: {channel} ===\033[0m")
         print(f"\033[90mConnected as: {username}\033[0m")
-        print("\033[90m[Type your message and press Enter. /exit to quit]\033[0m")
         print("─" * 60)
 
         try:
-            # ✅ CONNECT: Using 'extra_headers' (Standard for modern websockets)
-            async with websockets.connect(uri, extra_headers=headers) as ws:
+            # ✅ ROBUST CONNECT: Handles library version differences & Keepalive
+            # ping_interval=20 keeps the connection alive on Render/AWS free tiers
+            headers = {"Authorization": f"Bearer {self.token}"}
+            connect_args = {"ping_interval": 20, "ping_timeout": 20}
+
+            try:
+                # Modern websockets
+                connection = websockets.connect(uri, extra_headers=headers, **connect_args)
+            except TypeError:
+                # Older websockets
+                connection = websockets.connect(uri, additional_headers=headers, **connect_args)
+
+            async with connection as ws:
                 
                 # Task A: Receive Messages (Background)
                 async def receive():
@@ -260,30 +269,27 @@ class LumCLI:
                             raw = await ws.recv()
                             data = json.loads(raw)
 
-                            # Extract data cleanly
+                            # Extract data
                             sender = data.get("user", "Unknown")
                             msg = data.get("msg", "")
                             msg_type = data.get("type", "chat")
 
                             # 🎨 UX Color Coding
                             if sender == username:
-                                prefix = f"\033[1;32m[You]\033[0m" # Green for self
+                                # Don't print our own echoed message (we print it locally for speed)
+                                continue 
+                            elif msg_type == "system":
+                                prefix = f"\033[1;33m[SYS]\033[0m"
                             else:
-                                prefix = f"\033[1;34m[{sender}]\033[0m" # Blue for others
-                            
-                            if msg_type == "system":
-                                prefix = f"\033[1;33m[SYS]\033[0m" # Yellow for system
+                                prefix = f"\033[1;34m[{sender}]\033[0m"
 
-                            # ✨ THE TRICK: \r clears the 'waiting' prompt line
-                            # We print the message, then force the prompt '> ' to reappear
+                            # ✨ THE UI TRICK: Clear line -> Print Msg -> Restore Prompt
                             print(f"\r{prefix}: {msg}" + " " * 20) 
                             print(f"\033[1;32m> \033[0m", end="", flush=True)
 
-                        except websockets.ConnectionClosed:
-                            print("\r[!] Connection closed by server.")
+                        except (websockets.ConnectionClosed, asyncio.CancelledError):
                             break
-                        except Exception as e:
-                            # Ignore minor decoding errors to keep chat alive
+                        except Exception:
                             continue
 
                 # Task B: Send Messages (User Input)
@@ -293,10 +299,10 @@ class LumCLI:
                     
                     while True:
                         try:
-                            # 🧵 Run blocking input() in a separate thread so it doesn't freeze incoming msgs
+                            # 🧵 Run blocking input() in separate thread
                             msg = await loop.run_in_executor(None, input)
                             
-                            # Move cursor up one line to overwrite the raw input (cleanup UI)
+                            # Clean up the raw input line
                             print(f"\033[1A\033[K", end="") 
 
                             if msg.strip().lower() == "/exit":
@@ -305,33 +311,22 @@ class LumCLI:
                                 return
 
                             if msg.strip():
-                                # ✅ PROTOCOL FIX: Send JSON, not raw text
-                                payload = {
-                                    "type": "chat",
-                                    "user": username,
-                                    "msg": msg
-                                }
-                                await ws.send(json.dumps(payload))
+                                # ✅ PROTOCOL MATCH: Send RAW TEXT
+                                # The server's 'receive_text()' expects a string, not JSON.
+                                await ws.send(msg)
                                 
-                                # Manually print your own message instantly for better "feel"
+                                # Print locally for instant feedback (Zero Latency feel)
                                 print(f"\r\033[1;32m[You]:\033[0m {msg}")
                                 print(f"\033[1;32m> \033[0m", end="", flush=True)
 
-                        except Exception:
+                        except (asyncio.CancelledError, Exception):
                             return
 
-                # Run both Receive and Send tasks concurrently
-                done, pending = await asyncio.wait(
-                    [asyncio.create_task(receive()), asyncio.create_task(send())],
-                    return_when=asyncio.FIRST_COMPLETED
-                )
-
-                # Cleanup pending tasks if one finishes (like /exit)
-                for task in pending:
-                    task.cancel()
+                # Run concurrently
+                await asyncio.gather(receive(), send())
 
         except Exception as e:
-            print(f"\n[!] Could not connect to chat: {e}")
+            print(f"\n[!] Connection failed: {e}")
 
 
     async def handle_command(self, args):
