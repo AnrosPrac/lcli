@@ -15,115 +15,112 @@ BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
 class StreamHandler:
     def __init__(self, token: str):
         self.token = token
+        self.config_file = Path.home() / ".lum_config"
+
+    def _get_authenticated_user(self):
+        try:
+            if self.config_file.exists():
+                data = json.loads(self.config_file.read_text())
+                return data.get("sidhi_id")
+        except:
+            return None
+        return None
 
     async def start_broadcast(self, filename):
-        if not self.token:
-            print("[!] Not logged in. Run: lum login")
+        # 1. Identity Guard: Match Server Expectation
+        username = self._get_authenticated_user()
+        if not username:
+            print("[!] Identity error. Please run: lum login")
             return
 
-        username = getpass.getuser()
-        # FIX: Ensure we use wss:// for production or ws:// for localhost
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
-        
-        # FIX: Pass token in Query Param (Bypasses Render header stripping issues)
         uri = f"{ws_url}/stream/source/{username}?token={self.token}"
+        
+        # Stability settings for cloud hosting (Render/Railway)
+        connect_args = {
+            "ping_interval": 20, 
+            "ping_timeout": 20,
+            "close_timeout": 5
+        }
 
-        headers = {"Authorization": f"Bearer {self.token}"}
+        print(f"[*] Initializing secure stream for {username}...")
 
-        # FIX: Connection arguments for stability
-        connect_args = {"ping_interval": 20, "ping_timeout": 20}
-
-        try:
-            # FIX: Robust Connection Logic
+        while True:  # Auto-Reconnect Loop
             try:
-                connection = websockets.connect(uri, extra_headers=headers, **connect_args)
-            except TypeError:
-                connection = websockets.connect(uri, additional_headers=headers, **connect_args)
+                async with websockets.connect(uri, **connect_args) as ws:
+                    os.system('cls' if os.name == 'nt' else 'clear')
+                    print(f"\033[1;31m● LIVE ON AIR\033[0m")
+                    print(f"\033[1;30m" + "-"*40 + "\033[0m")
+                    print(f" Source:      \033[1;36m{username}\033[0m")
+                    print(f" File:        \033[1;33m{filename}\033[0m")
+                    print(f" Spectators:  Run 'lum follow {username}'")
+                    print(f"\033[1;30m" + "-"*40 + "\033[0m")
 
-            async with connection as ws:
-                # --- STREAMER UI ---
-                os.system('cls' if os.name == 'nt' else 'clear')
-                print(f"\033[1;31m● LIVE ON AIR\033[0m")
-                print(f"\033[1;30m----------------------------------------\033[0m")
-                print(f" Source:      \033[1;36m{username}\033[0m")
-                print(f" File:        \033[1;33m{filename}\033[0m")
-                print(f" Spectators:  Run 'lum follow {username}'")
-                print(f"\033[1;30m----------------------------------------\033[0m")
-                print(f"\033[3m(Streaming changes automatically... Ctrl+C to stop)\033[0m")
+                    last_content = ""
 
-                last_content = ""
+                    while True:
+                        if os.path.exists(filename):
+                            content = Path(filename).read_text()
+                            if content != last_content:
+                                payload = {
+                                    "code": content,
+                                    "file": filename,
+                                    "ts": time.time()
+                                }
+                                await ws.send(json.dumps(payload))
+                                last_content = content
+                                
+                                t = time.strftime("%H:%M:%S")
+                                print(f"\r\033[1;32m[✔] Synced at {t}\033[0m", end="", flush=True)
 
-                while True:
-                    if os.path.exists(filename):
-                        content = Path(filename).read_text()
-                        if content != last_content:
-                            # Payload matching Server Schema
-                            payload = {
-                                "code": content,
-                                "file": filename,
-                                "ts": time.time()
-                            }
-                            await ws.send(json.dumps(payload))
-                            last_content = content
-                            
-                            # UI Feedback (Subtle Pulse)
-                            t = time.strftime("%H:%M:%S")
-                            print(f"\r\033[1;32m[✔] Synced at {t}\033[0m", end="", flush=True)
+                        await asyncio.sleep(0.1)
 
-                    await asyncio.sleep(0.1)
-
-        except KeyboardInterrupt:
-            print("\n[!] Stream stopped by user.")
-        except Exception as e:
-            print(f"\n[!] Connection Error: {e}")
+            except (websockets.ConnectionClosed, Exception) as e:
+                print(f"\n[!] Connection lost: {e}")
+                print("[*] Attempting to reconnect in 3 seconds...")
+                await asyncio.sleep(3)
+                continue
+            except KeyboardInterrupt:
+                print("\n[!] Stream stopped by user.")
+                break
 
     async def follow_user(self, target_user):
-        if not self.token:
-            print("[!] Not logged in. Run: lum login")
-            return
-
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/watch/{target_user}?token={self.token}"
-        headers = {"Authorization": f"Bearer {self.token}"}
+        
         connect_args = {"ping_interval": 20, "ping_timeout": 20}
 
         try:
-            try:
-                connection = websockets.connect(uri, extra_headers=headers, **connect_args)
-            except TypeError:
-                connection = websockets.connect(uri, additional_headers=headers, **connect_args)
-
-            async with connection as ws:
-                print(f"[*] Connecting to {target_user}...")
+            async with websockets.connect(uri, **connect_args) as ws:
+                print(f"[*] Connected to {target_user}. Waiting for code...")
                 
                 while True:
                     raw_data = await ws.recv()
                     data = json.loads(raw_data)
 
-                    # Support both 'live_code' (standard) and cached payloads
-                    if data.get("type") == "live_code" or "content" in data:
+                    if "content" in data:
                         content = data.get("content", "")
                         filename = data.get("file", "Unknown")
                         
-                        # Calculate Latency
-                        ts = data.get("ts", time.time())
-                        latency = (time.time() - ts) * 1000
-                        lat_color = "\033[92m" if latency < 200 else "\033[93m"
+                        # Latency Tracking
+                        latency = (time.time() - data.get("ts", time.time())) * 1000
+                        lat_color = "\033[92m" if latency < 300 else "\033[93m"
 
-                        # --- SPECTATOR UI (Ultimate) ---
                         os.system('cls' if os.name == 'nt' else 'clear')
-                        
-                        # Top Bar
                         print(f"\033[44;1m WATCHING: {target_user} \033[0m", end=" ")
                         print(f"\033[46;30m FILE: {filename} \033[0m", end=" ")
                         print(f" {lat_color}● {latency:.0f}ms delay\033[0m")
                         print("\033[90m" + "━" * 60 + "\033[0m")
                         
-                        # The Code
                         print(content)
                         
                         print("\033[90m" + "━" * 60 + "\033[0m")
                         print("\033[3m(Listening... Ctrl+C to exit)\033[0m")
+
+        except KeyboardInterrupt:
+            print("\n[!] Stopped watching.")
+        except Exception as e:
+            print(f"\n[!] Stream Disconnected: {e}")
 
         except KeyboardInterrupt:
             print("\n[!] Stopped watching.")
