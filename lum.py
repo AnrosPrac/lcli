@@ -14,83 +14,120 @@ import time
 BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
 
 
-
 class StreamHandler:
     def __init__(self, token: str):
         self.token = token
+
     async def start_broadcast(self, filename):
+        # 🔐 Guard
+        if not self.token:
+            print("[!] Not logged in. Run: lum login")
+            return
+
         username = getpass.getuser()
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/source/{username}"
+
         headers = {
-    "Origin": BASE_URL,
-    "Authorization": f"Bearer {self.token}"
-}
+            "Origin": BASE_URL,
+            "Authorization": f"Bearer {self.token}"
+        }
 
-        # Cross-version compatible connection
+        ws = None  # 🔧 FIX: prevent unbound ws
+
         try:
-            ws_conn = websockets.connect(uri, additional_headers=headers)
-
-        except TypeError:
-            ws_conn = websockets.connect(uri, additional_headers=headers)
-
-
-        async with ws_conn as ws:
-            print(f"[*] ULTRA-LOW LATENCY STREAM: Active")
-            print(f"[*] Spectators can run: lum follow {username}")
-            last_content = ""
+            # 🔧 FIX: universal websocket connect (new + old versions)
             try:
-                while True:
-                    if os.path.exists(filename):
-                        content = Path(filename).read_text()
-                        if content != last_content:
-                            await ws.send(json.dumps({
-                                "code": content, 
-                                "file": filename,
-                                "ts": time.time() 
-                            }))
-                            last_content = content
-                    await asyncio.sleep(0.1)
-            except Exception as e:
-                print(f"\n[!] Stream stopped: {e}")
+                ws = await websockets.connect(uri, additional_headers=headers)
+            except TypeError:
+                ws = await websockets.connect(uri, extra_headers=headers)
+
+            async with ws:
+                print(f"[*] ULTRA-LOW LATENCY STREAM: Active")
+                print(f"[*] Spectators can run: lum follow {username}")
+
+                last_content = ""
+
+                try:
+                    while True:
+                        if os.path.exists(filename):
+                            content = Path(filename).read_text()
+                            if content != last_content:
+                                await ws.send(json.dumps({
+                                    "code": content,
+                                    "file": filename,
+                                    "ts": time.time()
+                                }))
+                                last_content = content
+
+                        await asyncio.sleep(0.1)
+
+                except Exception as e:
+                    print(f"\n[!] Stream stopped: {e}")
+
+        finally:
+            # 🔧 FIX: clean shutdown (no socket leaks)
+            if ws and not ws.closed:
+                try:
+                    await ws.close()
+                except:
+                    pass
 
     async def follow_user(self, target_user):
+        # 🔐 Guard
+        if not self.token:
+            print("[!] Not logged in. Run: lum login")
+            return
+
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/watch/{target_user}"
-        
-        # Use a dictionary to dynamically pick the right keyword for your version
-        params = {
-    "Origin": BASE_URL,
-    "Authorization": f"Bearer {self.token}"
-}
 
-        
-        # This is the 'Master Fix': 
-        # It checks if the library is the new version (additional_headers) 
-        # or old (extra_headers) before connecting.
-        if hasattr(websockets, "connect"):
+        params = {
+            "Origin": BASE_URL,
+            "Authorization": f"Bearer {self.token}"
+        }
+
+        ws = None  # 🔧 FIX
+
+        try:
+            # 🔧 FIX: universal websocket connect
             try:
-                # Try the modern 3.11+ way first
                 ws = await websockets.connect(uri, additional_headers=params)
             except TypeError:
-                # Fallback to the old way
                 ws = await websockets.connect(uri, extra_headers=params)
 
-        async with ws:
-            os.system('clear' if os.name == 'posix' else 'cls')
-            print(f"--- SPECTATING: {target_user} --- (Ctrl+C to stop)")
-            try:
+            async with ws:
+                os.system('clear' if os.name == 'posix' else 'cls')
+                print(f"--- SPECTATING: {target_user} --- (Ctrl+C to stop)")
+
                 while True:
                     raw_data = await ws.recv()
                     data = json.loads(raw_data)
+
                     if data.get("type") == "live_code":
                         latency = (time.time() - data.get("ts", time.time())) * 1000
                         speed_color = "\033[92m" if latency < 200 else "\033[93m"
+
                         os.system('clear' if os.name == 'posix' else 'cls')
-                        print(f"--- FILE: {data['file']} | USER: {target_user} | SPEED: {speed_color}{latency:.0f}ms\033[0m ---")
-                        print("-" * 60 + "\n" + data["content"] + "\n" + "-" * 60)
-            except Exception as e: 
-                print(f"\n[!] Stream ended: {e}")
+                        print(
+                            f"--- FILE: {data['file']} | USER: {target_user} "
+                            f"| SPEED: {speed_color}{latency:.0f}ms\033[0m ---"
+                        )
+                        print("-" * 60)
+                        print(data["content"])
+                        print("-" * 60)
+
+        except Exception as e:
+            print(f"\n[!] Stream ended: {e}")
+
+        finally:
+            # 🔧 FIX: safe close
+            if ws and not ws.closed:
+                try:
+                    await ws.close()
+                except:
+                    pass
+
 class LumCLI:
     def __init__(self):
         self.config_file = Path.home() / ".lum_config"
@@ -200,15 +237,33 @@ class LumCLI:
 
    
     async def start_chat(self, channel, password):
+        # 🔐 Guard: must be logged in
+        if not self.token:
+            print("[!] Not logged in. Run: lum login")
+            return
+
         username = getpass.getuser()
-        # Convert https to wss for the socket connection
+
+        # 🌐 Build websocket URL
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/chat/{channel}/{password}/{username}"
-        
-        try:
-            headers = {"Authorization": f"Bearer {self.token}"}
-            async with websockets.connect(uri, additional_headers=headers) as ws:
 
+        headers = {
+            "Authorization": f"Bearer {self.token}"
+        }
+
+        ws = None
+
+        try:
+            # 🔁 UNIVERSAL CONNECT (old + new websockets)
+            try:
+                # websockets >= 11
+                ws = await websockets.connect(uri, additional_headers=headers)
+            except TypeError:
+                # websockets <= 10
+                ws = await websockets.connect(uri, extra_headers=headers)
+
+            async with ws:
                 os.system('clear' if os.name == 'posix' else 'cls')
                 print(f"--- Channel: {channel} | User: {username} ---")
                 print("[!] Type message and hit Enter. Type '/exit' to quit.\n")
@@ -216,25 +271,49 @@ class LumCLI:
                 async def receive():
                     while True:
                         try:
-                            msg_raw = await ws.recv()
-                            data = json.loads(msg_raw)
-                            # Blue for users, Grey for system
-                            color = "\033[94m" if data["type"] == "chat" else "\033[90m"
-                            print(f"\r{color}[{data['user']}]:\033[0m {data['msg']}\n\033[92m> \033[0m", end="", flush=True)
-                        except: break
+                            raw = await ws.recv()
+                            data = json.loads(raw)
+
+                            color = "\033[94m" if data.get("type") == "chat" else "\033[90m"
+                            print(
+                                f"\r{color}[{data.get('user','?')}]:\033[0m {data.get('msg','')}\n\033[92m> \033[0m",
+                                end="",
+                                flush=True
+                            )
+                        except asyncio.CancelledError:
+                            return
+                        except:
+                            print("\n[!] Disconnected from server.")
+                            return
 
                 async def send():
+                    loop = asyncio.get_event_loop()
                     while True:
-                        # Standard input loop
-                        msg = await asyncio.get_event_loop().run_in_executor(None, input, "\033[92m> \033[0m")
-                        if msg.lower() == "/exit":
-                            await ws.close()
-                            break
-                        await ws.send(msg)
+                        try:
+                            msg = await loop.run_in_executor(
+                                None, input, "\033[92m> \033[0m"
+                            )
+                            if msg.lower() == "/exit":
+                                await ws.close()
+                                return
+                            await ws.send(msg)
+                        except asyncio.CancelledError:
+                            return
+                        except:
+                            return
 
                 await asyncio.gather(receive(), send())
+
         except Exception as e:
-            print(f"[!] Chat disconnected: {e}")
+            print(f"[!] Chat connection failed: {e}")
+
+        finally:
+            if ws and not ws.closed:
+                try:
+                    await ws.close()
+                except:
+                    pass
+
     async def handle_command(self, args):
         if len(args) == 0:
             self.show_help()
