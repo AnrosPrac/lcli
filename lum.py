@@ -12,6 +12,7 @@ import time
 
 
 BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
+
 class StreamHandler:
     def __init__(self, token: str):
         self.token = token
@@ -27,37 +28,24 @@ class StreamHandler:
         return None
 
     async def start_broadcast(self, filename):
-        # 1. Identity Guard: Match Server Expectation
         username = self._get_authenticated_user()
         if not username:
-            print("[!] Identity error. Please run: lum login")
+            print("\033[1;31m[!] Identity error. Please run: lum login\033[0m")
             return
 
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/source/{username}?token={self.token}"
         
-        # Stability settings for cloud hosting (Render/Railway)
         connect_args = {
             "ping_interval": 20, 
             "ping_timeout": 20,
             "close_timeout": 5
         }
 
-        print(f"[*] Initializing secure stream for {username}...")
-
-        while True:  # Auto-Reconnect Loop
+        while True:
             try:
                 async with websockets.connect(uri, **connect_args) as ws:
-                    os.system('cls' if os.name == 'nt' else 'clear')
-                    print(f"\033[1;31m● LIVE ON AIR\033[0m")
-                    print(f"\033[1;30m" + "-"*40 + "\033[0m")
-                    print(f" Source:      \033[1;36m{username}\033[0m")
-                    print(f" File:        \033[1;33m{filename}\033[0m")
-                    print(f" Spectators:  Run 'lum follow {username}'")
-                    print(f"\033[1;30m" + "-"*40 + "\033[0m")
-
                     last_content = ""
-
                     while True:
                         if os.path.exists(filename):
                             content = Path(filename).read_text()
@@ -70,52 +58,56 @@ class StreamHandler:
                                 await ws.send(json.dumps(payload))
                                 last_content = content
                                 
-                                t = time.strftime("%H:%M:%S")
-                                print(f"\r\033[1;32m[✔] Synced at {t}\033[0m", end="", flush=True)
-
+                                os.system('cls' if os.name == 'nt' else 'clear')
+                                print(f"\033[1;97;41m  LIVE  \033[0m \033[1;30m Streaming as: \033[1;36m{username}\033[0m")
+                                print(f"\033[1;30m" + "━"*50 + "\033[0m")
+                                print(f"\033[1;30m File:     \033[1;33m{filename}\033[0m")
+                                print(f"\033[1;30m Status:   \033[1;32mHealthy & Syncing\033[0m")
+                                print(f"\033[1;30m" + "━"*50 + "\033[0m")
+                                print(f"\n\033[1;30m[Last sync: {time.strftime('%H:%M:%S')}]\033[0m")
+                                
                         await asyncio.sleep(0.1)
 
-            except (websockets.ConnectionClosed, Exception) as e:
-                print(f"\n[!] Connection lost: {e}")
-                print("[*] Attempting to reconnect in 3 seconds...")
+            except Exception as e:
+                print(f"\n\033[1;31m[!] Connection Lost: {e}\033[0m")
                 await asyncio.sleep(3)
                 continue
-            except KeyboardInterrupt:
-                print("\n[!] Stream stopped by user.")
-                break
 
     async def follow_user(self, target_user):
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/watch/{target_user}?token={self.token}"
         
-        connect_args = {"ping_interval": 20, "ping_timeout": 20}
-
         try:
-            async with websockets.connect(uri, **connect_args) as ws:
-                print(f"[*] Connected to {target_user}. Waiting for code...")
-                
+            async with websockets.connect(uri, ping_interval=20) as ws:
                 while True:
                     raw_data = await ws.recv()
                     data = json.loads(raw_data)
 
-                    if "content" in data:
-                        content = data.get("content", "")
+                    if "code" in data:
+                        content = data.get("code", "")
                         filename = data.get("file", "Unknown")
-                        
-                        # Latency Tracking
                         latency = (time.time() - data.get("ts", time.time())) * 1000
-                        lat_color = "\033[92m" if latency < 300 else "\033[93m"
-
+                        
+                        lat_color = "\033[1;32m" if latency < 200 else "\033[1;33m"
+                        
                         os.system('cls' if os.name == 'nt' else 'clear')
-                        print(f"\033[44;1m WATCHING: {target_user} \033[0m", end=" ")
-                        print(f"\033[46;30m FILE: {filename} \033[0m", end=" ")
-                        print(f" {lat_color}● {latency:.0f}ms delay\033[0m")
-                        print("\033[90m" + "━" * 60 + "\033[0m")
                         
-                        print(content)
+                        # --- Mind-Blowing Header ---
+                        print(f"\033[1;97;44m WATCHING \033[0m \033[1;36m @{target_user}\033[0m", end="")
+                        print(f"  {lat_color}● {latency:.0f}ms\033[0m")
+                        print(f"\033[1;30m" + "━"*60 + "\033[0m")
+                        print(f"\033[1;37mFILE: {filename}\033[0m")
+                        print(f"\033[1;30m" + "━"*60 + "\033[0m")
                         
-                        print("\033[90m" + "━" * 60 + "\033[0m")
-                        print("\033[3m(Listening... Ctrl+C to exit)\033[0m")
+                        # --- The Code ---
+                        print(f"\033[0m{content}")
+                        
+                        # --- Footer ---
+                        print(f"\n\033[1;30m" + "━"*60 + "\033[0m")
+                        print(f"\033[1;30mPress Ctrl+C to stop following\033[0m")
+
+        except Exception as e:
+            print(f"\n\033[1;31m[!] Stream Ended or Connection Failed: {e}\033[0m")
 
         except KeyboardInterrupt:
             print("\n[!] Stopped watching.")
