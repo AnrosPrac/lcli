@@ -12,7 +12,6 @@ import time
 
 
 BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
-
 class StreamHandler:
     def __init__(self, token: str):
         self.token = token
@@ -23,50 +22,60 @@ class StreamHandler:
             return
 
         username = getpass.getuser()
+        # FIX: Ensure we use wss:// for production or ws:// for localhost
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
-        uri = f"{ws_url}/stream/source/{username}"
+        
+        # FIX: Pass token in Query Param (Bypasses Render header stripping issues)
+        uri = f"{ws_url}/stream/source/{username}?token={self.token}"
 
-        headers = {
-            "Origin": BASE_URL,
-            "Authorization": f"Bearer {self.token}"
-        }
+        headers = {"Authorization": f"Bearer {self.token}"}
 
-        ws = None
+        # FIX: Connection arguments for stability
+        connect_args = {"ping_interval": 20, "ping_timeout": 20}
 
         try:
-            # ✅ CONNECT (NO async-with HERE)
+            # FIX: Robust Connection Logic
             try:
-                ws = await websockets.connect(uri, additional_headers=headers)
+                connection = websockets.connect(uri, extra_headers=headers, **connect_args)
             except TypeError:
-                ws = await websockets.connect(uri, extra_headers=headers)
+                connection = websockets.connect(uri, additional_headers=headers, **connect_args)
 
-            print(f"[*] ULTRA-LOW LATENCY STREAM: Active")
-            print(f"[*] Spectators can run: lum follow {username}")
+            async with connection as ws:
+                # --- STREAMER UI ---
+                os.system('cls' if os.name == 'nt' else 'clear')
+                print(f"\033[1;31m● LIVE ON AIR\033[0m")
+                print(f"\033[1;30m----------------------------------------\033[0m")
+                print(f" Source:      \033[1;36m{username}\033[0m")
+                print(f" File:        \033[1;33m{filename}\033[0m")
+                print(f" Spectators:  Run 'lum follow {username}'")
+                print(f"\033[1;30m----------------------------------------\033[0m")
+                print(f"\033[3m(Streaming changes automatically... Ctrl+C to stop)\033[0m")
 
-            last_content = ""
+                last_content = ""
 
-            while True:
-                if os.path.exists(filename):
-                    content = Path(filename).read_text()
-                    if content != last_content:
-                        await ws.send(json.dumps({
-                            "code": content,
-                            "file": filename,
-                            "ts": time.time()
-                        }))
-                        last_content = content
+                while True:
+                    if os.path.exists(filename):
+                        content = Path(filename).read_text()
+                        if content != last_content:
+                            # Payload matching Server Schema
+                            payload = {
+                                "code": content,
+                                "file": filename,
+                                "ts": time.time()
+                            }
+                            await ws.send(json.dumps(payload))
+                            last_content = content
+                            
+                            # UI Feedback (Subtle Pulse)
+                            t = time.strftime("%H:%M:%S")
+                            print(f"\r\033[1;32m[✔] Synced at {t}\033[0m", end="", flush=True)
 
-                await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.1)
 
+        except KeyboardInterrupt:
+            print("\n[!] Stream stopped by user.")
         except Exception as e:
-            print(f"\n[!] Stream stopped: {e}")
-
-        finally:
-            if ws:
-                try:
-                    await ws.close()
-                except:
-                    pass
+            print(f"\n[!] Connection Error: {e}")
 
     async def follow_user(self, target_user):
         if not self.token:
@@ -74,51 +83,52 @@ class StreamHandler:
             return
 
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
-        uri = f"{ws_url}/stream/watch/{target_user}"
-
-        headers = {
-            "Origin": BASE_URL,
-            "Authorization": f"Bearer {self.token}"
-        }
-
-        ws = None
+        uri = f"{ws_url}/stream/watch/{target_user}?token={self.token}"
+        headers = {"Authorization": f"Bearer {self.token}"}
+        connect_args = {"ping_interval": 20, "ping_timeout": 20}
 
         try:
-            # ✅ CONNECT (NO async-with HERE)
             try:
-                ws = await websockets.connect(uri, additional_headers=headers)
+                connection = websockets.connect(uri, extra_headers=headers, **connect_args)
             except TypeError:
-                ws = await websockets.connect(uri, extra_headers=headers)
+                connection = websockets.connect(uri, additional_headers=headers, **connect_args)
 
-            os.system('clear' if os.name == 'posix' else 'cls')
-            print(f"--- SPECTATING: {target_user} --- (Ctrl+C to stop)")
+            async with connection as ws:
+                print(f"[*] Connecting to {target_user}...")
+                
+                while True:
+                    raw_data = await ws.recv()
+                    data = json.loads(raw_data)
 
-            while True:
-                raw_data = await ws.recv()
-                data = json.loads(raw_data)
+                    # Support both 'live_code' (standard) and cached payloads
+                    if data.get("type") == "live_code" or "content" in data:
+                        content = data.get("content", "")
+                        filename = data.get("file", "Unknown")
+                        
+                        # Calculate Latency
+                        ts = data.get("ts", time.time())
+                        latency = (time.time() - ts) * 1000
+                        lat_color = "\033[92m" if latency < 200 else "\033[93m"
 
-                if data.get("type") == "live_code":
-                    latency = (time.time() - data.get("ts", time.time())) * 1000
-                    speed_color = "\033[92m" if latency < 200 else "\033[93m"
+                        # --- SPECTATOR UI (Ultimate) ---
+                        os.system('cls' if os.name == 'nt' else 'clear')
+                        
+                        # Top Bar
+                        print(f"\033[44;1m WATCHING: {target_user} \033[0m", end=" ")
+                        print(f"\033[46;30m FILE: {filename} \033[0m", end=" ")
+                        print(f" {lat_color}● {latency:.0f}ms delay\033[0m")
+                        print("\033[90m" + "━" * 60 + "\033[0m")
+                        
+                        # The Code
+                        print(content)
+                        
+                        print("\033[90m" + "━" * 60 + "\033[0m")
+                        print("\033[3m(Listening... Ctrl+C to exit)\033[0m")
 
-                    os.system('clear' if os.name == 'posix' else 'cls')
-                    print(
-                        f"--- FILE: {data['file']} | USER: {target_user} "
-                        f"| SPEED: {speed_color}{latency:.0f}ms\033[0m ---"
-                    )
-                    print("-" * 60)
-                    print(data["content"])
-                    print("-" * 60)
-
+        except KeyboardInterrupt:
+            print("\n[!] Stopped watching.")
         except Exception as e:
-            print(f"\n[!] Stream ended: {e}")
-
-        finally:
-            if ws:
-                try:
-                    await ws.close()
-                except:
-                    pass
+            print(f"\n[!] Stream Disconnected: {e}")
 
 
 class LumCLI:
