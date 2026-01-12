@@ -3,31 +3,55 @@
 D="$HOME/.lum"
 RAW="https://raw.githubusercontent.com/AnrosPrac/lcli/main"
 
-echo "[*] Installing Lum CLI dependencies..."
+# 1. Install Python dependencies
+echo "[*] Initializing Lumetrix Environment..."
+python3 -m pip install --user httpx websockets pynacl -q --no-warn-script-location
 
-# 1. Install Python dependencies (correct set)
-python3 -m pip install --user \
-  httpx \
-  websockets \
-  pynacl \
-  -q --no-warn-script-location --disable-pip-version-check
-
-# 2. Create directory & download CLI
+# 2. Setup Directory
 mkdir -p "$D"
-curl -sSL "$RAW/lum.py" -o "$D/lum.py"
 
-# 3. Add alias to shell config (bash + zsh)
-A="alias lum='python3 $D/lum.py'"
+# 3. Create the "Destruct" Script locally
+cat <<EOF > "$D/destruct.sh"
+#!/bin/bash
+rm -rf "$HOME/.lum_config"
+rm -rf "$HOME/.lum_client"
+rm -f "$HOME/.lum/lum.py"
+echo "[✔] Lumetrix CLI and session files destroyed."
+EOF
+chmod +x "$D/destruct.sh"
 
+# 4. Define the persistent Aliases
+A1="alias lum='python3 $D/lum.py'"
+A2="alias hello-lumetrix='curl -sSL $RAW/index.html | bash'"
+A3="alias lum-destruct='$D/destruct.sh'"
+
+# 5. Inject into shell configs
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    if [ -f "$rc" ] && ! grep -qF "$A" "$rc"; then
-        echo "$A" >> "$rc"
+    if [ -f "$rc" ]; then
+        # Clean old aliases first to avoid duplicates
+        sed -i '/alias lum=/d' "$rc"
+        sed -i '/alias hello-lumetrix=/d' "$rc"
+        sed -i '/alias lum-destruct=/d' "$rc"
+        
+        # Add fresh aliases
+        echo "$A1" >> "$rc"
+        echo "$A2" >> "$rc"
+        echo "$A3" >> "$rc"
     fi
 done
 
-# 4. Activate alias for current session
-eval "$A"
+# 6. Initial Download of the CLI
+curl -sSL "$RAW/lum.py" -o "$D/lum.py"
+
+# 7. Activate for current session
+eval "$A1"
+eval "$A2"
+eval "$A3"
 
 echo ""
-echo "[✔] Lum CLI installed successfully"
-echo "[!] Please close and reopen your terminal to use the 'lum' command"
+echo "🚀 Lumetrix Initialized!"
+echo "------------------------------------------------"
+echo "lum            -> Run the CLI"
+echo "hello-lumetrix -> Update/Repair Lumetrix"
+echo "lum-destruct   -> Wipe all data (Safe & Clean)"
+echo "------------------------------------------------"

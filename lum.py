@@ -13,8 +13,10 @@ from nacl.signing import SigningKey
 import binascii
 
 
-
-BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
+VERSION = "1.0.0"
+BASE_URL = "https://test-termial.onrender.com" 
+RAW_URL = "https://raw.githubusercontent.com/sidhi/lum-cli/main/lum.py"
+ # Ensure this is your live URL
 
 class ClientIdentity:
     def __init__(self):
@@ -161,7 +163,28 @@ class LumCLI:
             except:
                 return None
         return None
-    
+    async def auto_update(self):
+        try:
+            print(f"[*] Checking for updates... (Current: v{VERSION})")
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(RAW_URL)
+                if resp.status_code == 200:
+                    # Look for the VERSION string in the remote code
+                    remote_match = re.search(r'VERSION = "([^"]+)"', resp.text)
+                    if remote_match:
+                        remote_version = remote_match.group(1)
+                        
+                        if remote_version != VERSION:
+                            print(f"[!] New version found: {remote_version}. Installing...")
+                            current_file = os.path.abspath(__file__)
+                            with open(current_file, "w") as f:
+                                f.write(resp.text)
+                            print(f"[✔] Update complete. Please restart your command.")
+                            sys.exit(0) 
+                        else:
+                            print(f"\033[90m[v{VERSION}] Engine up to date\033[0m")
+        except Exception:
+            print("[!] Update check failed (Skipping...)")
     async def sync_clock(self):
             try:
                 async with httpx.AsyncClient() as client:
@@ -238,6 +261,7 @@ class LumCLI:
                 return False
 
     async def login(self):
+        await self.auto_update()
         await self.sync_clock()
         print("--- Lum Engine Secure Login ---")
 
@@ -410,7 +434,26 @@ class LumCLI:
             print(f"[!] Connection failed: {e}")
             return None
 
+    async def check_auth(self):
+        if not self.token:
+            print("[!] Status: Not Logged In")
+            return
 
+        await self.sync_clock()
+        
+        try:
+            identity = ClientIdentity()
+            signing_key = identity.load_or_create()
+            public_key = binascii.hexlify(signing_key.verify_key.encode()).decode()
+            
+            print(f"\033[1;36m--- Lum Session Status ---\033[0m")
+            print(f"Token:      Active")
+            print(f"Identity:   {public_key[:10]}...{public_key[-10:]}")
+            print(f"Time Drift: {self.time_offset:.2f} seconds corrected")
+            print(f"Endpoint:   {BASE_URL}")
+            print(f"\033[1;32m[✔] System ready for Zero-Trust requests\033[0m")
+        except Exception as e:
+            print(f"[!] Session Corrupted: {e}")
     async def logout(self):
         try:
             if self.config_file.exists():
@@ -424,6 +467,20 @@ class LumCLI:
             print("[✔] Logged out successfully. Local session and identity cleared.")
         except Exception as e:
             print(f"[!] Error during logout: {e}")
+    async def auto_update(self):
+        raw_url = "https://lcli.sidhi.xyz/lum.py"
+        try:
+            print("[*] Checking for engine updates...")
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(raw_url)
+                if resp.status_code == 200:
+                    current_file = os.path.abspath(__file__)
+                    with open(current_file, "w") as f:
+                        f.write(resp.text)
+                    return True
+        except Exception:
+            pass
+        return False
     async def start_chat(self, channel, password):
         # 1. 🔐 Login Guard
         if not self.token:
@@ -656,6 +713,9 @@ class LumCLI:
                 # Add this inside the handle_command method in LumCLI class
         elif cmd == "logout":
             await self.logout()
+            return
+        elif cmd == "status" or cmd == "whoami":
+            await self.check_auth()
             return
         elif cmd == "inject":
             if len(args) < 2:
