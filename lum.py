@@ -196,7 +196,45 @@ class LumCLI:
                         self.time_offset = server_ts - time.time()
             except Exception:
                 pass
+    def run_manufactured_notebook(self, nb_path):
+        print(f"[*] Executing cells in {nb_path} to capture live outputs...")
+        with open(nb_path, "r") as f:
+            nb = json.load(f)
 
+        # Shared namespace for all cells (variables persist from cell 1 to cell N)
+        namespace = {}
+
+        for cell in nb["cells"]:
+            if cell["cell_type"] == "code":
+                code = "".join(cell["source"])
+                
+                # Redirect stdout to capture the result
+                import io
+                from contextlib import redirect_stdout
+                f = io.StringIO()
+                try:
+                    with redirect_stdout(f):
+                        exec(code, namespace)
+                    output_text = f.getvalue()
+                    
+                    # Store the actual output in the notebook JSON format
+                    cell["outputs"] = [{
+                        "name": "stdout",
+                        "output_type": "stream",
+                        "text": [output_text]
+                    }]
+                    cell["execution_count"] = 1
+                except Exception as e:
+                    cell["outputs"] = [{
+                        "name": "stderr",
+                        "output_type": "stream",
+                        "text": [f"Execution Error: {str(e)}"]
+                    }]
+
+        # Save the notebook with the new outputs
+        with open(nb_path, "w") as f:
+            json.dump(nb, f, indent=2)
+        print(f"[✔] Execution complete. Outputs injected into {nb_path}")
     def get_synced_ts(self):
         return str(int(time.time() + self.time_offset))
     async def generate_notebook(self, input_file, output_file):
@@ -292,6 +330,11 @@ class LumCLI:
 
                 with open(output_file, "w") as f:
                     json.dump(notebook, f, indent=2)
+                
+                print(f"[✔] Notebook ready!")
+                
+                # NEW: Auto-run the code locally to fill the 'outputs' section
+                self.run_manufactured_notebook(output_file)
                 
                 print(f"[✔] Notebook ready! Total Cells: {len(tasks) * 2}")
             else:
