@@ -13,7 +13,7 @@ from nacl.signing import SigningKey
 import binascii
 
 
-VERSION = "1.0.0"
+VERSION = "1.2.0"
 BASE_URL = "https://test-termial.onrender.com" 
 RAW_URL = "https://raw.githubusercontent.com/sidhi/lum-cli/main/lum.py"
  # Ensure this is your live URL
