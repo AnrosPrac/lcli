@@ -165,7 +165,7 @@ class LumCLI:
         return None
     async def auto_update(self):
         try:
-            print(f"[*] Checking for updates... (Current: v{VERSION})")
+            print(f"[*] Checking for updates.... (Current: v{VERSION})")
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(RAW_URL)
                 if resp.status_code == 200:
@@ -467,20 +467,7 @@ class LumCLI:
             print("[✔] Logged out successfully. Local session and identity cleared.")
         except Exception as e:
             print(f"[!] Error during logout: {e}")
-    async def auto_update(self):
-        raw_url = "https://lcli.sidhi.xyz/lum.py"
-        try:
-            print("[*] Checking for engine updates...")
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(raw_url)
-                if resp.status_code == 200:
-                    current_file = os.path.abspath(__file__)
-                    with open(current_file, "w") as f:
-                        f.write(resp.text)
-                    return True
-        except Exception:
-            pass
-        return False
+    
     async def start_chat(self, channel, password):
         # 1. 🔐 Login Guard
         if not self.token:
