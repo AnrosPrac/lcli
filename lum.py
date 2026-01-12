@@ -256,20 +256,39 @@ class LumCLI:
                 }
 
                 for task in tasks:
-                    # Add Markdown cell for Question (includes filename as a header)
+                    # Split the response into Code and Simulation
+                    parts = task['code'].split("[TERMINAL_START]")
+                    actual_code = parts[0].strip()
+                    terminal_sim = parts[1].strip() if len(parts) > 1 else ""
+
+                    # Cell 1: The Question
                     notebook["cells"].append({
                         "cell_type": "markdown",
                         "metadata": {},
-                        "source": [f"### {task['filename']}\n", f"> {task['question']}"]
+                        "source": [f"> **{task['filename']}**: {task['question']}"]
                     })
-                    # Add Code cell for the AI-generated solution
+                    
+                    # Cell 2: The Actual Executable Code
                     notebook["cells"].append({
                         "cell_type": "code",
                         "execution_count": None,
                         "metadata": {},
                         "outputs": [],
-                        "source": [task['code']]
+                        "source": [line + "\n" for line in actual_code.split("\n")]
                     })
+
+                    # Cell 3: The Simulated Terminal (New!)
+                    if terminal_sim:
+                        notebook["cells"].append({
+                            "cell_type": "markdown",
+                            "metadata": {},
+                            "source": [
+                                "#### Execution Preview\n",
+                                "```bash\n",
+                                f"{terminal_sim}\n",
+                                "```"
+                            ]
+                        })
 
                 with open(output_file, "w") as f:
                     json.dump(notebook, f, indent=2)
