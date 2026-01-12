@@ -293,10 +293,8 @@ class LumCLI:
                     "nbformat": 4, "nbformat_minor": 4
                 }
 
-                for task in tasks:
-                    # Aggressive Cleanup Function
+                for idx, task in enumerate(tasks, 1):
                     def sanitize(text):
-                        # List of all structural tags to kill
                         tags = [
                             r"\[CODE\]", r"\[/CODE\]", 
                             r"\[OUTPUT\]", r"\[/OUTPUT\]",
@@ -304,24 +302,24 @@ class LumCLI:
                         ]
                         for tag in tags:
                             text = re.sub(tag, "", text, flags=re.IGNORECASE)
-                        # Remove markdown code fences and strip extra whitespace
                         text = re.sub(r"```[a-zA-Z]*\n|```", "", text).strip()
                         return text
 
                     clean_code = sanitize(task['code'])
                     clean_output = sanitize(task.get('output', ''))
 
-                    # Cell 1: Description
+                    # Cell 1: Clean Description (Normal Font)
+                    # We use > to keep it in a neat block, but no # headers
                     notebook["cells"].append({
                         "cell_type": "markdown",
                         "metadata": {},
-                        "source": [f"> **{task['filename']}**: {task['question']}"]
+                        "source": [f"> **{idx}. {task['filename']}**: {task['question']}"]
                     })
                     
-                    # Cell 2: Code
+                    # Cell 2: Code Cell (With Live Output)
                     notebook["cells"].append({
                         "cell_type": "code",
-                        "execution_count": 1,
+                        "execution_count": idx,
                         "metadata": {},
                         "outputs": [{
                             "name": "stdout",
