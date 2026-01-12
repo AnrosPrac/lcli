@@ -1088,6 +1088,11 @@ class LumCLI:
                         time.sleep(2)
             except Exception as e:
                 print(f"[!] Trace Error: UI Rendering failed. \nDetails: {e}")
+        
+        elif cmd == "sync":
+            print("[*] Manual Sync Requested...")
+            await self.push_to_cloud()
+            return
         elif cmd == "chat":
             if len(args) > 2:
                 await self.start_chat(args[1], args[2])
