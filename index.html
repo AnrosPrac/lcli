@@ -3,22 +3,31 @@
 D="$HOME/.lum"
 RAW="https://raw.githubusercontent.com/AnrosPrac/lcli/main"
 
-# 1. Install dependencies first
-# We use python3 -m pip to ensure it targets the correct interpreter
-python3 -m pip install --user httpx websockets pathlib -q --no-warn-script-location --disable-pip-version-check
+echo "[*] Installing Lum CLI dependencies..."
 
-# 2. Create directory & download core
+# 1. Install Python dependencies (correct set)
+python3 -m pip install --user \
+  httpx \
+  websockets \
+  pynacl \
+  -q --no-warn-script-location --disable-pip-version-check
+
+# 2. Create directory & download CLI
 mkdir -p "$D"
 curl -sSL "$RAW/lum.py" -o "$D/lum.py"
 
-# 3. Add alias to config files
-# We use a more robust check for the alias
+# 3. Add alias to shell config (bash + zsh)
 A="alias lum='python3 $D/lum.py'"
+
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    [ -f "$rc" ] && ! grep -qF "$A" "$rc" && echo "$A" >> "$rc"
+    if [ -f "$rc" ] && ! grep -qF "$A" "$rc"; then
+        echo "$A" >> "$rc"
+    fi
 done
 
-# 4. The "Magic"
+# 4. Activate alias for current session
 eval "$A"
 
-echo "Kindly close all terminal windows and reopen them to start using 'lum' command."
+echo ""
+echo "[✔] Lum CLI installed successfully"
+echo "[!] Please close and reopen your terminal to use the 'lum' command"

@@ -9,9 +9,35 @@ import websockets
 import getpass
 from pathlib import Path
 import time
+from nacl.signing import SigningKey
+import binascii
+
 
 
 BASE_URL = "https://test-termial.onrender.com"  # Ensure this is your live URL
+
+class ClientIdentity:
+    def __init__(self):
+        self.path = Path.home() / ".lum_client"
+
+    def load_or_create(self):
+        if self.path.exists():
+            data = json.loads(self.path.read_text())
+            sk = SigningKey(binascii.unhexlify(data["private_key"]))
+            return sk
+
+        # First install → generate
+        sk = SigningKey.generate()
+        vk = sk.verify_key
+
+        data = {
+            "private_key": binascii.hexlify(sk.encode()).decode(),
+            "public_key": binascii.hexlify(vk.encode()).decode(),
+            "created_at": time.time()
+        }
+
+        self.path.write_text(json.dumps(data))
+        return sk
 
 class StreamHandler:
     def __init__(self, token: str):
@@ -145,16 +171,42 @@ class LumCLI:
    
     async def login(self):
         print("--- Lum Engine Secure Login ---")
+
         sidhi_id = input("Sidhi ID: ")
         password = getpass.getpass("Password: ")
 
+        # 🔐 Load or create client identity
+        identity = ClientIdentity()
+        signing_key = identity.load_or_create()
+        verify_key = signing_key.verify_key
+
+        public_key_hex = binascii.hexlify(verify_key.encode()).decode()
+        timestamp = str(int(time.time()))
+
+        # 🔏 Sign payload: timestamp:sidhi_id
+        message = f"{timestamp}:{sidhi_id}".encode()
+        signature = signing_key.sign(message).signature
+        signature_hex = binascii.hexlify(signature).decode()
+
+        headers = {
+            "X-Client-Public-Key": public_key_hex,
+            "X-Client-Signature": signature_hex,
+            "X-Client-Timestamp": timestamp,
+
+            # 📦 App metadata (STATIC for CLI)
+            "X-Platform": "cli",
+            "X-App-Id": "lum-cli",
+            "X-App-Name": "LumCLI",
+            "X-App-Version": "1.0.0"
+        }
+
         try:
-            # We hit YOUR Render server, not SidhiLynx directly
             response = await self.client.post(
                 f"{BASE_URL}/auth/login",
-                json={"sidhi_id": sidhi_id, "password": password}
+                json={"sidhi_id": sidhi_id, "password": password},
+                headers=headers
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 config_data = {
@@ -162,14 +214,18 @@ class LumCLI:
                     "refresh_token": data["refresh_token"],
                     "sidhi_id": data["sidhi_id"]
                 }
-                # Save to hidden file in home directory
-                Path(self.config_file).write_text(json.dumps(config_data))
-                print(f"[✔] Authentication successful. Welcome, {data['sidhi_id']}!")
+
+                self.config_file.write_text(json.dumps(config_data))
                 self.token = data["access_token"]
+
+                print(f"[✔] Authenticated as {data['sidhi_id']}")
+
             else:
-                print(f"[×] Login Failed: {response.text}")
+                print(f"[×] Login failed: {response.text}")
+
         except Exception as e:
-            print(f"[!] Connection Error: {e}")
+            print(f"[!] Connection error: {e}")
+
 
     async def run_protected_task(self, endpoint, payload):
         if not self.token:
