@@ -196,45 +196,45 @@ class LumCLI:
                         self.time_offset = server_ts - time.time()
             except Exception:
                 pass
-    def run_manufactured_notebook(self, nb_path):
-        print(f"[*] Executing cells in {nb_path} to capture live outputs...")
-        with open(nb_path, "r") as f:
-            nb = json.load(f)
+    # def run_manufactured_notebook(self, nb_path):
+    #     print(f"[*] Executing cells in {nb_path} to capture live outputs...")
+    #     with open(nb_path, "r") as f:
+    #         nb = json.load(f)
 
-        # Shared namespace for all cells (variables persist from cell 1 to cell N)
-        namespace = {}
+    #     # Shared namespace for all cells (variables persist from cell 1 to cell N)
+    #     namespace = {}
 
-        for cell in nb["cells"]:
-            if cell["cell_type"] == "code":
-                code = "".join(cell["source"])
+    #     for cell in nb["cells"]:
+    #         if cell["cell_type"] == "code":
+    #             code = "".join(cell["source"])
                 
-                # Redirect stdout to capture the result
-                import io
-                from contextlib import redirect_stdout
-                f = io.StringIO()
-                try:
-                    with redirect_stdout(f):
-                        exec(code, namespace)
-                    output_text = f.getvalue()
+    #             # Redirect stdout to capture the result
+    #             import io
+    #             from contextlib import redirect_stdout
+    #             f = io.StringIO()
+    #             try:
+    #                 with redirect_stdout(f):
+    #                     exec(code, namespace)
+    #                 output_text = f.getvalue()
                     
-                    # Store the actual output in the notebook JSON format
-                    cell["outputs"] = [{
-                        "name": "stdout",
-                        "output_type": "stream",
-                        "text": [output_text]
-                    }]
-                    cell["execution_count"] = 1
-                except Exception as e:
-                    cell["outputs"] = [{
-                        "name": "stderr",
-                        "output_type": "stream",
-                        "text": [f"Execution Error: {str(e)}"]
-                    }]
+    #                 # Store the actual output in the notebook JSON format
+    #                 cell["outputs"] = [{
+    #                     "name": "stdout",
+    #                     "output_type": "stream",
+    #                     "text": [output_text]
+    #                 }]
+    #                 cell["execution_count"] = 1
+    #             except Exception as e:
+    #                 cell["outputs"] = [{
+    #                     "name": "stderr",
+    #                     "output_type": "stream",
+    #                     "text": [f"Execution Error: {str(e)}"]
+    #                 }]
 
-        # Save the notebook with the new outputs
-        with open(nb_path, "w") as f:
-            json.dump(nb, f, indent=2)
-        print(f"[✔] Execution complete. Outputs injected into {nb_path}")
+    #     # Save the notebook with the new outputs
+    #     with open(nb_path, "w") as f:
+    #         json.dump(nb, f, indent=2)
+    #     print(f"[✔] Execution complete. Outputs injected into {nb_path}")
     def get_synced_ts(self):
         return str(int(time.time() + self.time_offset))
     async def generate_notebook(self, input_file, output_file):
@@ -294,39 +294,32 @@ class LumCLI:
                 }
 
                 for task in tasks:
-                    # Split the response into Code and Simulation
-                    parts = task['code'].split("[TERMINAL_START]")
-                    actual_code = parts[0].strip()
-                    terminal_sim = parts[1].strip() if len(parts) > 1 else ""
+                    # CLEANUP: Remove any literal tags Gemini might have included
+                    raw_code = task['code']
+                    # Remove the specific tags that cause SyntaxErrors
+                    clean_code = re.sub(r"\[/?CODE\]|\[/?OUTPUT\]", "", raw_code).strip()
+                    # Also strip any accidental backticks
+                    clean_code = re.sub(r"```[a-zA-Z]*\n|```", "", clean_code).strip()
 
-                    # Cell 1: The Question
+                    # Cell 1: Description
                     notebook["cells"].append({
                         "cell_type": "markdown",
                         "metadata": {},
                         "source": [f"> **{task['filename']}**: {task['question']}"]
                     })
                     
-                    # Cell 2: The Actual Executable Code
+                    # Cell 2: Code (Now actually clean)
                     notebook["cells"].append({
                         "cell_type": "code",
-                        "execution_count": None,
+                        "execution_count": 1,
                         "metadata": {},
-                        "outputs": [],
-                        "source": [line + "\n" for line in actual_code.split("\n")]
+                        "outputs": [{
+                            "name": "stdout",
+                            "output_type": "stream",
+                            "text": [task.get('output', 'No output generated.')]
+                        }],
+                        "source": [line + "\n" for line in clean_code.split("\n")]
                     })
-
-                    # Cell 3: The Simulated Terminal (New!)
-                    if terminal_sim:
-                        notebook["cells"].append({
-                            "cell_type": "markdown",
-                            "metadata": {},
-                            "source": [
-                                "#### Execution Preview\n",
-                                "```bash\n",
-                                f"{terminal_sim}\n",
-                                "```"
-                            ]
-                        })
 
                 with open(output_file, "w") as f:
                     json.dump(notebook, f, indent=2)
@@ -334,9 +327,7 @@ class LumCLI:
                 print(f"[✔] Notebook ready!")
                 
                 # NEW: Auto-run the code locally to fill the 'outputs' section
-                self.run_manufactured_notebook(output_file)
                 
-                print(f"[✔] Notebook ready! Total Cells: {len(tasks) * 2}")
             else:
                 print(f"[!] Server Error: {response.status_code}")
         except Exception as e:
