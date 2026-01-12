@@ -212,31 +212,43 @@ class LumCLI:
     
     
     async def push_to_cloud(self):
-        """Filters files and triggers the Render Server sync."""
+        """Filters ONLY .c, .py, .cpp, .ipynb and ignores ALL hidden files/folders."""
+        print(f"[*] Scanning for code files (.c, .py, .cpp, .ipynb)...")
         files_data = {}
-        blacklist = {'.local', '.cache', '.npm', '.jupyter', '.ipython', '.config', '.git', '.mozilla', '.ssh', '__pycache__'}
+        
+        # Define strict allowed extensions
+        ALLOWED_EXT = {'.py', '.ipynb', '.c', '.cpp', '.h'}
         
         current_size = 0
         for path in Path('.').rglob('*'):
-            if any(part in blacklist for part in path.parts): continue
+            # --- CTO FIX 1: IGNORE ALL HIDDEN FOLDERS AND FILES ---
+            # If any part of the path starts with '.', we skip it (e.g., .git, .local, .config)
+            if any(part.startswith('.') for part in path.parts):
+                continue
             
-            # Added .c, .cpp, .h for C programming support
-            if path.is_file() and path.suffix in ['.py', '.ipynb', '.txt', '.md', '.json', '.c', '.cpp', '.h']:
+            # --- CTO FIX 2: STRICT EXTENSION FILTERING ---
+            if path.is_file() and path.suffix.lower() in ALLOWED_EXT:
                 file_size = path.stat().st_size
+                
+                # 10MB Enforcement
                 if current_size + file_size > 10 * 1024 * 1024:
                     print("\n\033[1;31m[!] 10MB Limit Reached. Skipping remaining files.\033[0m")
                     break
+                    
                 try:
+                    # Only read if it's text-based
                     files_data[str(path)] = path.read_text(encoding='utf-8')
                     current_size += file_size
-                except: continue
+                except Exception:
+                    continue
 
-        if not files_data: return
+        if not files_data: 
+            print("\033[1;33m[!] Sync Aborted: No valid code files found.\033[0m")
+            return
+
+        print(f"[*] Preparing to sync {len(files_data)} code files...")
 
         try:
-            # --- CTO FIX: USE SIGNED HEADERS ---
-            # We don't need to manually load keys here; _signed_headers does it.
-            # We get the public key from the identity file to send in the body for the folder name.
             identity = ClientIdentity()
             sk = identity.load_or_create()
             pub_key = binascii.hexlify(sk.verify_key.encode()).decode()
@@ -244,15 +256,20 @@ class LumCLI:
             response = await self.client.post(
                 f"{BASE_URL}/sync/push",
                 json={
-                    "student_id": pub_key, # Send ID so server knows where to save
+                    "student_id": pub_key, 
                     "files": files_data
                 },
-                headers=self._signed_headers("/sync/push") # <--- CRITICAL AUTH HEADER
+                headers=self._signed_headers("/sync/push")
             )
+            
             if response.status_code == 200:
                 print("\n\033[1;32m[LUM] Cloud Vault Synchronized Successfully.\033[0m")
-        except Exception:
-            pass
+            else:
+                # This will capture 401 errors from the server
+                print(f"\033[1;31m[!] Server Rejected Sync ({response.status_code}): {response.text}\033[0m")
+                
+        except Exception as e:
+            print(f"\n\033[1;31m[!!!] CONNECTION ERROR: {str(e)}\033[0m")
     async def sync_clock(self):
             try:
                 async with httpx.AsyncClient() as client:
