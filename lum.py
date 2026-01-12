@@ -294,21 +294,23 @@ class LumCLI:
                 }
 
                 for task in tasks:
-                    # CLEANUP: Remove any literal tags Gemini might have included
+                    # --- CTO HIGH-PRECISION CLEANUP ---
                     raw_code = task['code']
-                    # Remove the specific tags that cause SyntaxErrors
-                    clean_code = re.sub(r"\[/?CODE\]|\[/?OUTPUT\]", "", raw_code).strip()
-                    # Also strip any accidental backticks
+                    
+                    # 1. Remove [CODE], [/CODE], [OUTPUT], [/OUTPUT] tags (case insensitive)
+                    clean_code = re.sub(r"\[/?CODE\]|\[/?OUTPUT\]", "", raw_code, flags=re.IGNORECASE).strip()
+                    
+                    # 2. Safety check: remove any lingering markdown code fences
                     clean_code = re.sub(r"```[a-zA-Z]*\n|```", "", clean_code).strip()
 
-                    # Cell 1: Description
+                    # Cell 1: The Description (Markdown)
                     notebook["cells"].append({
                         "cell_type": "markdown",
                         "metadata": {},
                         "source": [f"> **{task['filename']}**: {task['question']}"]
                     })
                     
-                    # Cell 2: Code (Now actually clean)
+                    # Cell 2: The Executable Code (Now 100% Pure)
                     notebook["cells"].append({
                         "cell_type": "code",
                         "execution_count": 1,
