@@ -372,30 +372,37 @@ class LumCLI:
         print(f"[*] Lum is thinking (Mode: {mode})...")
 
         try:
+            # 1. Attempt the request with current signed headers
             response = await self.client.post(
                 f"{BASE_URL}{path}",
                 json=payload,
                 headers=self._signed_headers(path)
             )
 
+            # 2. If 401, refresh token and RE-SIGN the request
             if response.status_code == 401:
                 refreshed = await self.refresh_token()
                 if not refreshed:
                     print("[!] Session expired. Please login again.")
                     return None
 
+                # Crucial: Call self._signed_headers again to get the NEW token and NEW timestamp
                 response = await self.client.post(
                     f"{BASE_URL}{path}",
                     json=payload,
                     headers=self._signed_headers(path)
                 )
 
+            # 3. Handle the response
             if response.status_code == 200:
                 content_type = response.headers.get("content-type", "")
                 if "image" in content_type:
                     return response.content
-                return self.clean_response(response.json().get("output"))
+                
+                data = response.json()
+                return self.clean_response(data.get("output"))
 
+            # 4. Handle errors
             print(f"[!] Server Error {response.status_code}: {response.text}")
             return None
 
@@ -404,7 +411,19 @@ class LumCLI:
             return None
 
 
-
+    async def logout(self):
+        try:
+            if self.config_file.exists():
+                self.config_file.unlink()
+            
+            identity_path = Path.home() / ".lum_client"
+            if identity_path.exists():
+                identity_path.unlink()
+                
+            self.token = None
+            print("[✔] Logged out successfully. Local session and identity cleared.")
+        except Exception as e:
+            print(f"[!] Error during logout: {e}")
     async def start_chat(self, channel, password):
         # 1. 🔐 Login Guard
         if not self.token:
@@ -601,13 +620,14 @@ class LumCLI:
                         "input2": code2
                     }
                     
+                                        # FIND THIS BLOCK IN YOUR FILE AND REPLACE THE HEADERS LINE:
                     print(f"[*] Comparing logic flow...")
                     try:
-                        headers = {"Authorization": f"Bearer {self.token}"}
+                        # headers = {"Authorization": f"Bearer {self.token}"} <--- REMOVE THIS
                         response = await self.client.post(
                             f"{BASE_URL}/ai/execute",
                             json=payload,
-                            headers=headers
+                            headers=self._signed_headers("/ai/execute") # <--- ADD THIS
                         )
                         if response.status_code == 200:
                             # Use the same cleanup logic as other commands
@@ -634,6 +654,9 @@ class LumCLI:
                 print("[!] Usage: lum stream <filename>")
 
                 # Add this inside the handle_command method in LumCLI class
+        elif cmd == "logout":
+            await self.logout()
+            return
         elif cmd == "inject":
             if len(args) < 2:
                 print("[!] Usage: lum format <filename.txt>")
@@ -649,12 +672,13 @@ class LumCLI:
             
             # Note: Changed endpoint to /ai/format specifically for this task
             endpoint = f"{BASE_URL}/ai/format"
+                        # REPLACE IN BOTH BLOCKS:
             try:
-                headers = {"Authorization": f"Bearer {self.token}"}
+                # headers = {"Authorization": f"Bearer {self.token}"} <--- REMOVE
                 response = await self.client.post(
                     endpoint,
                     json={"text_content": content},
-                    headers=headers
+                    headers=self._signed_headers("/ai/format" if cmd == "format" else "/ai/inject") # <--- ADD
                 )
 
                 if response.status_code == 200:
@@ -722,12 +746,13 @@ class LumCLI:
             
             # Note: Changed endpoint to /ai/format specifically for this task
             endpoint = f"{BASE_URL}/ai/format"
+                    # REPLACE IN BOTH BLOCKS:
             try:
-                headers = {"Authorization": f"Bearer {self.token}"}
+                # headers = {"Authorization": f"Bearer {self.token}"} <--- REMOVE
                 response = await self.client.post(
                     endpoint,
                     json={"text_content": content},
-                    headers=headers
+                    headers=self._signed_headers("/ai/format" if cmd == "format" else "/ai/inject") # <--- ADD
                 )
                 if response.status_code == 200:
                     result = response.json().get("output")
