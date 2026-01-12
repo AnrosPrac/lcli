@@ -294,23 +294,31 @@ class LumCLI:
                 }
 
                 for task in tasks:
-                    # --- CTO HIGH-PRECISION CLEANUP ---
-                    raw_code = task['code']
-                    
-                    # 1. Remove [CODE], [/CODE], [OUTPUT], [/OUTPUT] tags (case insensitive)
-                    clean_code = re.sub(r"\[/?CODE\]|\[/?OUTPUT\]", "", raw_code, flags=re.IGNORECASE).strip()
-                    
-                    # 2. Safety check: remove any lingering markdown code fences
-                    clean_code = re.sub(r"```[a-zA-Z]*\n|```", "", clean_code).strip()
+                    # Aggressive Cleanup Function
+                    def sanitize(text):
+                        # List of all structural tags to kill
+                        tags = [
+                            r"\[CODE\]", r"\[/CODE\]", 
+                            r"\[OUTPUT\]", r"\[/OUTPUT\]",
+                            r"\[TERMINAL_START\]"
+                        ]
+                        for tag in tags:
+                            text = re.sub(tag, "", text, flags=re.IGNORECASE)
+                        # Remove markdown code fences and strip extra whitespace
+                        text = re.sub(r"```[a-zA-Z]*\n|```", "", text).strip()
+                        return text
 
-                    # Cell 1: The Description (Markdown)
+                    clean_code = sanitize(task['code'])
+                    clean_output = sanitize(task.get('output', ''))
+
+                    # Cell 1: Description
                     notebook["cells"].append({
                         "cell_type": "markdown",
                         "metadata": {},
                         "source": [f"> **{task['filename']}**: {task['question']}"]
                     })
                     
-                    # Cell 2: The Executable Code (Now 100% Pure)
+                    # Cell 2: Code
                     notebook["cells"].append({
                         "cell_type": "code",
                         "execution_count": 1,
@@ -318,7 +326,7 @@ class LumCLI:
                         "outputs": [{
                             "name": "stdout",
                             "output_type": "stream",
-                            "text": [task.get('output', 'No output generated.')]
+                            "text": [clean_output if clean_output else "Execution successful."]
                         }],
                         "source": [line + "\n" for line in clean_code.split("\n")]
                     })
