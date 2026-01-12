@@ -199,7 +199,86 @@ class LumCLI:
 
     def get_synced_ts(self):
         return str(int(time.time() + self.time_offset))
+    async def generate_notebook(self, input_file, output_file):
+        cmd = "format"
+        if not Path(input_file).exists():
+            print(f"[!] Input file {input_file} not found.")
+            return
+        content = Path(input_file).read_text()
+        print(f"[*] Reformatting {input_file} via Lum Engine...")
+            
+            # Note: Changed endpoint to /ai/format specifically for this task
+        endpoint = f"{BASE_URL}/ai/format"
+                    # REPLACE IN BOTH BLOCKS:
+        try:
+                # headers = {"Authorization": f"Bearer {self.token}"} <--- REMOVE
+                response = await self.client.post(
+                    endpoint,
+                    json={"text_content": content},
+                    headers=self._signed_headers("/ai/format" if cmd == "format" else "/ai/inject") # <--- ADD
+                )
+                if response.status_code == 200:
+                    result = response.json().get("output")
+                    if result:
+                        Path(input_file).write_text(self.clean_response(result))
+                        print(f"[✔] {input_file} is now formatted for injection.")
+                else:
+                    print(f"[×] Format failed: {response.text}")
+        except Exception as e:
+                print(f"[!] CLI Error: {e}") 
 
+           
+
+        content = Path(input_file).read_text()
+        print(f"[*] Manufacturing Notebook: {output_file}...")
+
+        try:
+            # Send request to our new protected endpoint
+            response = await self.client.post(
+                f"{BASE_URL}/ai/cells",
+                json={"text_content": content},
+                headers=self._signed_headers("/ai/cells"),
+                timeout=120.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                tasks = data.get("tasks", [])
+
+                # Initialize Jupyter Notebook Structure
+                notebook = {
+                    "cells": [],
+                    "metadata": {
+                        "kernelspec": {"display_name": "Python 3", "name": "python3"},
+                        "language_info": {"name": "python"}
+                    },
+                    "nbformat": 4, "nbformat_minor": 4
+                }
+
+                for task in tasks:
+                    # Add Markdown cell for Question (includes filename as a header)
+                    notebook["cells"].append({
+                        "cell_type": "markdown",
+                        "metadata": {},
+                        "source": [f"### {task['filename']}\n", f"> {task['question']}"]
+                    })
+                    # Add Code cell for the AI-generated solution
+                    notebook["cells"].append({
+                        "cell_type": "code",
+                        "execution_count": None,
+                        "metadata": {},
+                        "outputs": [],
+                        "source": [task['code']]
+                    })
+
+                with open(output_file, "w") as f:
+                    json.dump(notebook, f, indent=2)
+                
+                print(f"[✔] Notebook ready! Total Cells: {len(tasks) * 2}")
+            else:
+                print(f"[!] Server Error: {response.status_code}")
+        except Exception as e:
+            print(f"[!] Notebook generation failed: {e}")
     def clean_response(self, text):
         """Removes Markdown code blocks (```c, ```json, etc.) from the response."""
         if not isinstance(text, str): return text
@@ -649,7 +728,11 @@ class LumCLI:
                     print(f"[!] File {filename} not found.")
             else:
                 print("[!] Usage: lum explain <filename>")
-        
+        elif cmd == "cells":
+            if len(args) < 3:
+                print("[!] Usage: lum cells <questions.txt> <output.ipynb>")
+            else:
+                await self.generate_notebook(args[1], args[2])
         elif cmd == "diff":
             if len(args) > 2:
                 file1, file2 = args[1], args[2]
