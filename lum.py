@@ -151,6 +151,7 @@ class LumCLI:
         self.config_file = Path.home() / ".lum_config"
         self.token = self._load_local_token()
         self.client = httpx.AsyncClient(timeout=180.0)
+        self.time_offset = 0
 
     def _load_local_token(self):
         if self.config_file.exists():
@@ -161,6 +162,20 @@ class LumCLI:
                 return None
         return None
     
+    async def sync_clock(self):
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(f"{BASE_URL}/health")
+                    server_date = resp.headers.get("Date")
+                    if server_date:
+                        import email.utils
+                        server_ts = email.utils.parsedate_to_datetime(server_date).timestamp()
+                        self.time_offset = server_ts - time.time()
+            except Exception:
+                pass
+
+    def get_synced_ts(self):
+        return str(int(time.time() + self.time_offset))
 
     def clean_response(self, text):
         """Removes Markdown code blocks (```c, ```json, etc.) from the response."""
@@ -170,6 +185,7 @@ class LumCLI:
         return cleaned.strip()
     
     async def refresh_token(self) -> bool:
+            await self.sync_clock()
             """
             Attempts silent token refresh.
             Returns True if successful, False otherwise.
@@ -189,7 +205,7 @@ class LumCLI:
                 verify_key = signing_key.verify_key
 
                 public_key_hex = binascii.hexlify(verify_key.encode()).decode()
-                timestamp = str(int(time.time()))
+                timestamp = self.get_synced_ts()
 
                 # 🔏 Sign payload: timestamp:refresh_token
                 message = f"{timestamp}:{refresh_token}".encode()
@@ -222,6 +238,7 @@ class LumCLI:
                 return False
 
     async def login(self):
+        await self.sync_clock()
         print("--- Lum Engine Secure Login ---")
 
         sidhi_id = input("Sidhi ID: ")
@@ -233,7 +250,7 @@ class LumCLI:
         verify_key = signing_key.verify_key
 
         public_key_hex = binascii.hexlify(verify_key.encode()).decode()
-        timestamp = str(int(time.time()))
+        timestamp = self.get_synced_ts()
 
         # 🔏 Sign payload: timestamp:sidhi_id
         message = f"{timestamp}:{sidhi_id}".encode()
@@ -323,9 +340,9 @@ class LumCLI:
         verify_key = signing_key.verify_key
 
         public_key_hex = binascii.hexlify(verify_key.encode()).decode()
-        timestamp = str(int(time.time()))
+        timestamp = self.get_synced_ts() # <--- USE THE SYNCED ONE HERE
 
-        # 🔏 Sign payload
+    # 🔏 Sign payload
         message = f"{timestamp}:{path}".encode()
         signature = signing_key.sign(message).signature
         signature_hex = binascii.hexlify(signature).decode()
