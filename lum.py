@@ -17,7 +17,28 @@ VERSION = "1.1.0"
 BASE_URL = "https://test-termial.onrender.com" 
 RAW_URL = "https://raw.githubusercontent.com/AnrosPrac/lcli/main"
  # Ensure this is your live URL
+class IdleSync:
+    def __init__(self, cli_instance):
+        self.cli = cli_instance
+        self.last_activity = time.time()
+        self.threshold = 600 # 10 Minutes Inactivity
+        self.pending_sync = False
+        self.is_running = False
 
+    def notify_activity(self):
+        self.last_activity = time.time()
+        self.pending_sync = True
+
+    async def watch_loop(self):
+        self.is_running = True
+        while self.is_running:
+            await asyncio.sleep(60) # Check status every minute
+            idle_time = time.time() - self.last_activity
+            
+            if self.pending_sync and idle_time >= self.threshold:
+                # Trigger the thin push
+                await self.cli.push_to_cloud()
+                self.pending_sync = False
 class ClientIdentity:
     def __init__(self):
         self.path = Path.home() / ".lum_client"
@@ -154,6 +175,9 @@ class LumCLI:
         self.token = self._load_local_token()
         self.client = httpx.AsyncClient(timeout=180.0)
         self.time_offset = 0
+        self.idle_worker = IdleSync(self)
+        # Create a non-blocking background task
+        asyncio.create_task(self.idle_worker.watch_loop())
 
     def _load_local_token(self):
         if self.config_file.exists():
@@ -185,6 +209,50 @@ class LumCLI:
                             print(f"\033[90m[v{VERSION}] Engine up to date\033[0m")
         except Exception:
             print("[!] Update check failed (Skipping...)")
+    
+    
+    async def push_to_cloud(self):
+        """Filters files and triggers the Render Server sync."""
+        files_data = {}
+        blacklist = {'.local', '.cache', '.npm', '.jupyter', '.ipython', '.config', '.git', '.mozilla', '.ssh', '__pycache__'}
+        
+        current_size = 0
+        for path in Path('.').rglob('*'):
+            if any(part in blacklist for part in path.parts): continue
+            
+            # Added .c, .cpp, .h for C programming support
+            if path.is_file() and path.suffix in ['.py', '.ipynb', '.txt', '.md', '.json', '.c', '.cpp', '.h']:
+                file_size = path.stat().st_size
+                if current_size + file_size > 10 * 1024 * 1024:
+                    print("\n\033[1;31m[!] 10MB Limit Reached. Skipping remaining files.\033[0m")
+                    break
+                try:
+                    files_data[str(path)] = path.read_text(encoding='utf-8')
+                    current_size += file_size
+                except: continue
+
+        if not files_data: return
+
+        try:
+            # --- CTO FIX: USE SIGNED HEADERS ---
+            # We don't need to manually load keys here; _signed_headers does it.
+            # We get the public key from the identity file to send in the body for the folder name.
+            identity = ClientIdentity()
+            sk = identity.load_or_create()
+            pub_key = binascii.hexlify(sk.verify_key.encode()).decode()
+            
+            response = await self.client.post(
+                f"{BASE_URL}/sync/push",
+                json={
+                    "student_id": pub_key, # Send ID so server knows where to save
+                    "files": files_data
+                },
+                headers=self._signed_headers("/sync/push") # <--- CRITICAL AUTH HEADER
+            )
+            if response.status_code == 200:
+                print("\n\033[1;32m[LUM] Cloud Vault Synchronized Successfully.\033[0m")
+        except Exception:
+            pass
     async def sync_clock(self):
             try:
                 async with httpx.AsyncClient() as client:
@@ -710,6 +778,7 @@ class LumCLI:
 
 
     async def handle_command(self, args):
+        self.idle_worker.notify_activity()
         if len(args) == 0:
             self.show_help()
             return
