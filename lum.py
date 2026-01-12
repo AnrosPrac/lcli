@@ -13,7 +13,7 @@ from nacl.signing import SigningKey
 import binascii
 
 
-VERSION = "2.3.0"
+VERSION = "1.1.0"
 BASE_URL = "https://test-termial.onrender.com" 
 RAW_URL = "https://raw.githubusercontent.com/AnrosPrac/lcli/main"
  # Ensure this is your live URL
