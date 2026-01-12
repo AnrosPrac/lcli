@@ -15,7 +15,7 @@ import binascii
 
 VERSION = "2.3.0"
 BASE_URL = "https://test-termial.onrender.com" 
-RAW_URL = "https://raw.githubusercontent.com/sidhi/lum-cli/main/lum.py"
+RAW_URL = "https://raw.githubusercontent.com/AnrosPrac/lcli/main"
  # Ensure this is your live URL
 
 class ClientIdentity:
@@ -752,11 +752,11 @@ class LumCLI:
                 content = f.read()
 
             try:
-                headers = {"Authorization": f"Bearer {self.token}"}
+               
                 response = await self.client.post(
                     f"{BASE_URL}/ai/inject",
                     json={"text_content": content},
-                    headers=headers,
+                    headers=self._signed_headers("/ai/inject"),
                     timeout=180.0
                 )
 

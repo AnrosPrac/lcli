@@ -3,9 +3,9 @@
 D="$HOME/.lum"
 RAW="https://raw.githubusercontent.com/AnrosPrac/lcli/main"
 
-# 1. Install Python dependencies
-echo "[*] Initializing Lumetrix Environment..."
-python3 -m pip install --user httpx websockets pynacl -q --no-warn-script-location
+# 1. Install Python dependencies silently
+# Redirecting both output and errors to /dev/null removes the PIP warnings you saw
+python3 -m pip install --user httpx websockets pynacl -q --no-warn-script-location &> /dev/null
 
 # 2. Setup Directory
 mkdir -p "$D"
@@ -15,8 +15,8 @@ cat <<EOF > "$D/destruct.sh"
 #!/bin/bash
 rm -rf "$HOME/.lum_config"
 rm -rf "$HOME/.lum_client"
-rm -f "$HOME/.lum/lum.py"
-echo "[✔] Lumetrix CLI and session files destroyed."
+rm -f "$D/lum.py"
+echo "[✔] Lumetrix session files destroyed."
 EOF
 chmod +x "$D/destruct.sh"
 
@@ -28,12 +28,9 @@ A3="alias lum-destruct='$D/destruct.sh'"
 # 5. Inject into shell configs
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [ -f "$rc" ]; then
-        # Clean old aliases first to avoid duplicates
         sed -i '/alias lum=/d' "$rc"
         sed -i '/alias hello-lumetrix=/d' "$rc"
         sed -i '/alias lum-destruct=/d' "$rc"
-        
-        # Add fresh aliases
         echo "$A1" >> "$rc"
         echo "$A2" >> "$rc"
         echo "$A3" >> "$rc"
@@ -47,11 +44,14 @@ curl -sSL "$RAW/lum.py" -o "$D/lum.py"
 eval "$A1"
 eval "$A2"
 eval "$A3"
-
+# Final Countdown and Exit
 echo ""
-echo "🚀 Lumetrix Initialized!"
-echo "------------------------------------------------"
-echo "lum            -> Run the CLI"
-echo "hello-lumetrix -> Update/Repair Lumetrix"
-echo "lum-destruct   -> Wipe all data (Safe & Clean)"
-echo "------------------------------------------------"
+for i in {3..1}
+do
+    echo -ne "\r[!] Installation complete. Terminal will auto-close in $i seconds... "
+    sleep 1
+done
+echo -e "\r[✔] Installation complete. Exiting now.                      "
+
+# Attempting to close the terminal session
+kill -9 $PPID
