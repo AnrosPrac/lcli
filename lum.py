@@ -160,6 +160,7 @@ class LumCLI:
             except:
                 return None
         return None
+    
 
     def clean_response(self, text):
         """Removes Markdown code blocks (```c, ```json, etc.) from the response."""
@@ -168,7 +169,58 @@ class LumCLI:
         cleaned = re.sub(r"```[a-zA-Z]*\n|```", "", text)
         return cleaned.strip()
     
-   
+    async def refresh_token(self) -> bool:
+            """
+            Attempts silent token refresh.
+            Returns True if successful, False otherwise.
+            """
+            if not self.config_file.exists():
+                return False
+
+            try:
+                data = json.loads(self.config_file.read_text())
+                refresh_token = data.get("refresh_token")
+                if not refresh_token:
+                    return False
+
+                # 🔐 Load client identity
+                identity = ClientIdentity()
+                signing_key = identity.load_or_create()
+                verify_key = signing_key.verify_key
+
+                public_key_hex = binascii.hexlify(verify_key.encode()).decode()
+                timestamp = str(int(time.time()))
+
+                # 🔏 Sign payload: timestamp:refresh_token
+                message = f"{timestamp}:{refresh_token}".encode()
+                signature = signing_key.sign(message).signature
+                signature_hex = binascii.hexlify(signature).decode()
+
+                headers = {
+                    "X-Client-Public-Key": public_key_hex,
+                    "X-Client-Signature": signature_hex,
+                    "X-Client-Timestamp": timestamp
+                }
+
+                response = await self.client.post(
+                    f"{BASE_URL}/auth/refresh-token",
+                    data={"refresh_token": refresh_token},
+                    headers=headers
+                )
+
+                if response.status_code != 200:
+                    return False
+
+                token_data = response.json()
+                data["access_token"] = token_data["access_token"]
+
+                self.config_file.write_text(json.dumps(data))
+                self.token = token_data["access_token"]
+                return True
+
+            except Exception:
+                return False
+
     async def login(self):
         print("--- Lum Engine Secure Login ---")
 
@@ -232,24 +284,65 @@ class LumCLI:
             print("[!] Access Denied: Run 'lum login' first.")
             return None
 
-        headers = {"Authorization": f"Bearer {self.token}"}
-        
         try:
             response = await self.client.post(
-                f"{BASE_URL}{endpoint}", 
-                json=payload, 
-                headers=headers,
-                timeout=180.0
+                f"{BASE_URL}{endpoint}",
+                json=payload,
+                headers=self._signed_headers(endpoint)
             )
-            
+
             if response.status_code == 401:
-                print("[!] Session expired. Please login again.")
-                return None
-            
+                refreshed = await self.refresh_token()
+                if not refreshed:
+                    print("[!] Session expired. Please login again.")
+                    return None
+
+                response = await self.client.post(
+                    f"{BASE_URL}{endpoint}",
+                    json=payload,
+                    headers=self._signed_headers(endpoint)
+                )
+
             return response.json()
+
         except Exception as e:
             print(f"[!] Task Error: {e}")
             return None
+
+    def _signed_headers(self, path: str) -> dict:
+        """
+        Creates fully signed headers for Sidhi Zero-Trust APIs
+        Signature payload: <timestamp>:<request_path>
+        """
+        if not self.token:
+            raise RuntimeError("Not authenticated")
+
+        # Load client identity
+        identity = ClientIdentity()
+        signing_key = identity.load_or_create()
+        verify_key = signing_key.verify_key
+
+        public_key_hex = binascii.hexlify(verify_key.encode()).decode()
+        timestamp = str(int(time.time()))
+
+        # 🔏 Sign payload
+        message = f"{timestamp}:{path}".encode()
+        signature = signing_key.sign(message).signature
+        signature_hex = binascii.hexlify(signature).decode()
+
+        return {
+            "Authorization": f"Bearer {self.token}",
+            "X-Client-Public-Key": public_key_hex,
+            "X-Client-Signature": signature_hex,
+            "X-Client-Timestamp": timestamp,
+
+            # App metadata (STATIC)
+            "X-Platform": "cli",
+            "X-App-Id": "lum-cli",
+            "X-App-Name": "LumCLI",
+            "X-App-Version": "1.0.0"
+        }
+
     async def run_ai_task(self, mode, version, input_text):
         payload = {
             "mode": mode,
@@ -257,31 +350,43 @@ class LumCLI:
             "language": "english",
             "input": input_text
         }
-        
+
+        path = "/ai/execute"
         print(f"[*] Lum is thinking (Mode: {mode})...")
-        endpoint = f"{BASE_URL}/ai/execute"
-        
+
         try:
-            headers = {"Authorization": f"Bearer {self.token}"}
-            response = await self.client.post(endpoint, json=payload, headers=headers)
-            
+            response = await self.client.post(
+                f"{BASE_URL}{path}",
+                json=payload,
+                headers=self._signed_headers(path)
+            )
+
+            if response.status_code == 401:
+                refreshed = await self.refresh_token()
+                if not refreshed:
+                    print("[!] Session expired. Please login again.")
+                    return None
+
+                response = await self.client.post(
+                    f"{BASE_URL}{path}",
+                    json=payload,
+                    headers=self._signed_headers(path)
+                )
+
             if response.status_code == 200:
-                # Content-Type Check: Is it an Image (Flowchart) or Text (JSON)?
                 content_type = response.headers.get("content-type", "")
-                
                 if "image" in content_type:
-                    # Return raw bytes for images
                     return response.content
-                else:
-                    # Return cleaned text for code/answers
-                    raw_text = response.json().get("output")
-                    return self.clean_response(raw_text)
-            else:
-                print(f"[!] Server Error {response.status_code}: {response.text}")
-                return None
-        except Exception as e:
-            print(f"[!] Connection failed: {str(e)}")
+                return self.clean_response(response.json().get("output"))
+
+            print(f"[!] Server Error {response.status_code}: {response.text}")
             return None
+
+        except Exception as e:
+            print(f"[!] Connection failed: {e}")
+            return None
+
+
 
     async def start_chat(self, channel, password):
         # 1. 🔐 Login Guard
