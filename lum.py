@@ -819,7 +819,7 @@ class LumCLI:
 
 
     async def handle_command(self, args):
-        self.idle_worker.notify_activity()
+        
         if len(args) == 0:
             self.show_help()
             return
@@ -866,6 +866,13 @@ class LumCLI:
                 Path(outfile).write_text(result)
                 print(f"[✔] Algorithm saved to {outfile}")
 
+        
+        elif cmd == "watch":
+            # Internal entry point for the background daemon
+            pid_file = Path.home() / ".lum_watcher.pid"
+            pid_file.write_text(str(os.getpid()))
+            await self.idle_worker.watch_loop()
+            return
         # 3. WRITE: lum write "prompt" <filename>
         elif cmd == "write":
             if len(args) > 2:
