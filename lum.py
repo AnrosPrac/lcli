@@ -25,6 +25,20 @@ class IdleSync:
         self.last_push_ts = time.time()
         self.is_running = False
 
+
+    def is_jlab_environment(self) -> bool:
+        """
+        Detects if the CLI is running inside a managed JupyterLab/Hub environment.
+        Used to restrict cloud auto-sync and manual pushes to college servers.
+        """
+        markers = [
+            "JUPYTERHUB_USER", 
+            "JUPYTERHUB_SERVICE_PREFIX", 
+            "JPY_PARENT_PID",
+            "JUPYTER_RUNTIME_DIR"
+        ]
+        # Returns True if any marker exists or if 'jupyterhub' is in the current path
+        return any(os.environ.get(m) for m in markers) or "jupyterhub" in os.getcwd().lower()
     async def watch_loop(self):
         self.is_running = True
         # Silent mode for background daemon
@@ -195,8 +209,9 @@ class LumCLI:
         
         # --- AUTO-DAEMON TRIGGER ---
         # Don't spawn if we are already the watcher or updating
-        if len(sys.argv) > 1 and sys.argv[-1] not in ["watch", "login"]:
-            self._ensure_daemon()
+        if self.is_jlab_environment():
+            if len(sys.argv) > 1 and sys.argv[-1] not in ["watch", "login"]:
+                self._ensure_daemon()
 
     def _ensure_daemon(self):
         """Silently spawns the background watcher if it isn't running."""
@@ -1143,9 +1158,10 @@ class LumCLI:
                 print(f"[!] Trace Error: UI Rendering failed. \nDetails: {e}")
         
         elif cmd == "sync":
-            print("[*] Manual Sync Requested...")
-            await self.push_to_cloud()
-            return
+            if not self.is_jlab_environment():
+                print("\n\033[1;31m[!] Access Denied: Cloud Sync is restricted to JLab Environments.\033[0m")
+                return
+            await self.sync_files()
         elif cmd == "chat":
             if len(args) > 2:
                 await self.start_chat(args[1], args[2])
