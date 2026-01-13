@@ -13,7 +13,7 @@ from nacl.signing import SigningKey
 import binascii
 
 
-VERSION = "1.2.0"
+VERSION = "1.0.0"
 BASE_URL = "https://test-termial.onrender.com" 
 RAW_URL = "https://raw.githubusercontent.com/AnrosPrac/lcli/main"
  # Ensure this is your live URL
@@ -1014,7 +1014,7 @@ class LumCLI:
                 return
 
             content = Path(filename).read_text()
-            print(f"[*] Reformatting {filename} via Lum Engine...")
+           
             
             # Note: Changed endpoint to /ai/format specifically for this task
             endpoint = f"{BASE_URL}/ai/format"
@@ -1031,7 +1031,7 @@ class LumCLI:
                     result = response.json().get("output")
                     if result:
                         Path(filename).write_text(self.clean_response(result))
-                        print(f"[✔] {filename} is now formatted for injection.")
+                        
                 else:
                     print(f"[×] Format failed: {response.text}")
             except Exception as e:
@@ -1196,17 +1196,37 @@ class LumCLI:
         
 
     def show_help(self):
-        print("""
-Lum CLI - AI Co-Pilot
----------------------
-  lum ask "question"            : Ask a general coding question
-  lum write "task" <file>       : Write code from scratch to a file
-  lum fix <file>                : Fix bugs in an existing file (in-place)
-  lum algo <file>               : Extract algorithm logic from code
-  lum fc <file>                 : Generate an ISO Flowchart image (PNG)
-  lum chat <room> <pass>        : Join a real-time private study room
-  lum stream <file>             : Start streaming your typing live
-  lum follow <user>             : Watch a student/teacher code in real-time
+        print(f"""
+\033[1;36mLUM CLI - Advanced AI Co-Pilot\033[0m
+\033[1;30mVersion: {VERSION} | Zero-Trust Identity Engine\033[0m
+{"━"*60}
+
+\033[1;33m[ CORE AI ]\033[0m
+  \033[1;32mask\033[0m "question"          : Context-aware coding assistance
+  \033[1;32mwrite\033[0m "prompt" <file>  : Generate full source code from a task
+  \033[1;32mfix\033[0m <file>               : In-place bug fixing and optimization
+  \033[1;32malgo\033[0m <file>              : Extract logical steps or pseudocode
+  \033[1;32minject\033[0m <txt> <dir>       : Bulk generate project structure into a folder
+  \033[1;32mformat\033[0m <file.txt>        : Prepare text files for project injection
+
+\033[1;33m[ ANALYSIS & DEBUG ]\033[0m
+  \033[1;32mtrace\033[0m <file>             : Step-through debugger (Stack/Heap visualization)
+  \033[1;32mcells\033[0m <txt> <ipynb>      : Manufacture Jupyter Notebooks from logic
+  \033[1;32mdiff\033[0m <f1> <f2>           : Compare logic flow between two files
+  \033[1;32mexplain\033[0m <file>          : Deep-dive logic breakdown of source code
+
+\033[1;33m[ LIVE COLLABORATION ]\033[0m
+  \033[1;32mstream\033[0m <file>            : Broadcast your live coding session
+  \033[1;32mfollow\033[0m <user>            : Watch another student code in real-time
+  \033[1;32mchat\033[0m <room> <pass>       : Join a secure, private study channel
+
+\033[1;33m[ SYSTEM ]\033[0m
+  \033[1;32mlogin\033[0m                    : Authenticate Zero-Trust identity
+  \033[1;32mstatus\033[0m                   : Check session, time-drift, and identity keys
+  \033[1;32msync\033[0m                    : Force push local changes to JLab Vault
+  \033[1;32mlogout\033[0m                   : Clear local session and security tokens
+{"━"*60}
+\033[1;30mUse 'lum <command>' to execute. Persistence Daemon: Active\033[0m
         """)
 
 async def main():
