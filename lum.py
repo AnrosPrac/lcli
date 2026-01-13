@@ -651,6 +651,21 @@ class LumCLI:
             "X-App-Version": "1.0.0"
         }
 
+    async def _animate_thinking(self, stop_event):
+        label = "LUMETRX"
+        dots = ["   ", ".  ", ".. ", "...", " ..", "  .", "   "]
+        idx = 0
+        while not stop_event.is_set():
+            char_idx = idx % len(label)
+            word = "".join([label[i].upper() if i == char_idx else label[i].lower() for i in range(len(label))])
+            dot_frame = dots[idx % len(dots)]
+            sys.stdout.write(f"\r[*] {word} is thinking{dot_frame}")
+            sys.stdout.flush()
+            await asyncio.sleep(0.15)
+            idx += 1
+        sys.stdout.write("\r" + " " * 40 + "\r")
+        sys.stdout.flush()
+
     async def run_ai_task(self, mode, version, input_text):
         await self.sync_clock()
         payload = {
@@ -659,46 +674,40 @@ class LumCLI:
             "language": "english",
             "input": input_text
         }
-
         path = "/ai/execute"
-        print(f"[*] Lum is thinking (Mode: {mode})...")
-
+        stop_event = asyncio.Event()
+        animation_task = asyncio.create_task(self._animate_thinking(stop_event))
         try:
-            # 1. Attempt the request with current signed headers
             response = await self.client.post(
                 f"{BASE_URL}{path}",
                 json=payload,
                 headers=self._signed_headers(path)
             )
-
-            # 2. If 401, refresh token and RE-SIGN the request
             if response.status_code == 401:
                 refreshed = await self.refresh_token()
                 if not refreshed:
+                    stop_event.set()
+                    await animation_task
                     print("[!] Session expired. Please login again.")
                     return None
-
-                # Crucial: Call self._signed_headers again to get the NEW token and NEW timestamp
                 response = await self.client.post(
                     f"{BASE_URL}{path}",
                     json=payload,
                     headers=self._signed_headers(path)
                 )
-
-            # 3. Handle the response
+            stop_event.set()
+            await animation_task
             if response.status_code == 200:
                 content_type = response.headers.get("content-type", "")
                 if "image" in content_type:
                     return response.content
-                
                 data = response.json()
                 return self.clean_response(data.get("output"))
-
-            # 4. Handle errors
             print(f"[!] Server Error {response.status_code}: {response.text}")
             return None
-
         except Exception as e:
+            stop_event.set()
+            await animation_task
             print(f"[!] Connection failed: {e}")
             return None
 
