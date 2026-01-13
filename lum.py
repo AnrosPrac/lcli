@@ -200,6 +200,9 @@ class StreamHandler:
 
 
 class LumCLI:
+    def is_jlab_environment(self) -> bool:
+        markers = ["JUPYTERHUB_USER", "JUPYTERHUB_SERVICE_PREFIX", "JPY_PARENT_PID", "JUPYTER_RUNTIME_DIR"]
+        return any(os.environ.get(m) for m in markers) or "jupyterhub" in os.getcwd().lower()
     def __init__(self):
         self.config_file = Path.home() / ".lum_config"
         self.token = self._load_local_token()
@@ -1161,7 +1164,7 @@ class LumCLI:
             if not self.is_jlab_environment():
                 print("\n\033[1;31m[!] Access Denied: Cloud Sync is restricted to JLab Environments.\033[0m")
                 return
-            await self.sync_files()
+            await self.push_to_cloud()
         elif cmd == "chat":
             if len(args) > 2:
                 await self.start_chat(args[1], args[2])
