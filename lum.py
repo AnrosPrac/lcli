@@ -13,7 +13,7 @@ from nacl.signing import SigningKey
 import binascii
 
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 BASE_URL = "https://test-termial.onrender.com" 
 RAW_URL = "https://raw.githubusercontent.com/AnrosPrac/lcli/main"
  # Ensure this is your live URL
@@ -820,6 +820,7 @@ class LumCLI:
 
 
     async def handle_command(self, args):
+        await self.sync_clock()
         
         if len(args) == 0:
             self.show_help()
@@ -913,6 +914,7 @@ class LumCLI:
             else:
                 await self.generate_notebook(args[1], args[2])
         elif cmd == "diff":
+            await self.sync_clock()
             if len(args) > 2:
                 file1, file2 = args[1], args[2]
                 if os.path.exists(file1) and os.path.exists(file2):
@@ -952,6 +954,7 @@ class LumCLI:
                 print("[!] Usage: lum diff <file1> <file2>")
         # 7. STREAM: lum stream <file>
         elif cmd == "stream":
+            await self.sync_clock()
             if len(args) > 1:
                 handler = StreamHandler(self.token)
                 await handler.start_broadcast(args[1])
@@ -967,6 +970,7 @@ class LumCLI:
             await self.check_auth()
             return
         elif cmd == "inject":
+            await self.sync_clock()
             if len(args) < 2:
                 print("[!] Usage: lum format <filename.txt>")
                 return
