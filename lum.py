@@ -222,10 +222,6 @@ class StreamHandler:
         except Exception as e:
             print(f"\n[!] Stream Disconnected: {e}")
 
-        except KeyboardInterrupt:
-            print("\n[!] Stopped watching.")
-        except Exception as e:
-            print(f"\n[!] Stream Disconnected: {e}")
 
 
 class LumCLI:
@@ -1223,4 +1219,10 @@ async def main():
         lum.show_help()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        # This wraps the entire engine in a safety net
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        # Catches the global exit signal and shuts down silently
+        # without dumping a Python traceback
+        sys.exit(0)
