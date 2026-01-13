@@ -17,28 +17,44 @@ VERSION = "1.1.0"
 BASE_URL = "https://test-termial.onrender.com" 
 RAW_URL = "https://raw.githubusercontent.com/AnrosPrac/lcli/main"
  # Ensure this is your live URL
+# --- REPLACE THE OLD IdleSync CLASS WITH THIS ---
 class IdleSync:
     def __init__(self, cli_instance):
         self.cli = cli_instance
-        self.last_activity = time.time()
-        self.threshold = 600 # 10 Minutes Inactivity
-        self.pending_sync = False
+        self.threshold = 180  # 3 Minute Idle Threshold
+        self.last_push_ts = time.time()
         self.is_running = False
-
-    def notify_activity(self):
-        self.last_activity = time.time()
-        self.pending_sync = True
 
     async def watch_loop(self):
         self.is_running = True
+        # Silent mode for background daemon
+        ALLOWED = {'.py', '.ipynb', '.c', '.cpp', '.h'}
+
         while self.is_running:
-            await asyncio.sleep(60) # Check status every minute
-            idle_time = time.time() - self.last_activity
+            await asyncio.sleep(10) 
+
+            latest_edit_time = 0
+            has_files = False
             
-            if self.pending_sync and idle_time >= self.threshold:
-                # Trigger the thin push
+            for root, _, files in os.walk("."):
+                if any(part.startswith('.') for part in Path(root).parts): continue
+                for file in files:
+                    if Path(file).suffix in ALLOWED:
+                        try:
+                            mtime = os.path.getmtime(os.path.join(root, file))
+                            if mtime > latest_edit_time:
+                                latest_edit_time = mtime
+                                has_files = True
+                        except: continue
+            
+            if not has_files: continue
+
+            time_since_edit = time.time() - latest_edit_time
+            
+            # Trigger if we have new work AND the user has been quiet for 3 mins
+            if latest_edit_time > self.last_push_ts and time_since_edit >= self.threshold:
                 await self.cli.push_to_cloud()
-                self.pending_sync = False
+                self.last_push_ts = time.time()
 class ClientIdentity:
     def __init__(self):
         self.path = Path.home() / ".lum_client"
@@ -176,8 +192,31 @@ class LumCLI:
         self.client = httpx.AsyncClient(timeout=180.0)
         self.time_offset = 0
         self.idle_worker = IdleSync(self)
-        # Create a non-blocking background task
-        asyncio.create_task(self.idle_worker.watch_loop())
+        
+        # --- AUTO-DAEMON TRIGGER ---
+        # Don't spawn if we are already the watcher or updating
+        if len(sys.argv) > 1 and sys.argv[-1] not in ["watch", "login"]:
+            self._ensure_daemon()
+
+    def _ensure_daemon(self):
+        """Silently spawns the background watcher if it isn't running."""
+        if not self.token: return
+
+        pid_file = Path.home() / ".lum_watcher.pid"
+        try:
+            if pid_file.exists():
+                pid = int(pid_file.read_text())
+                os.kill(pid, 0) # Check if process is alive
+                return # Already running
+        except: pass
+
+        # Spawn detached background process
+        import subprocess
+        subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "watch"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
 
     def _load_local_token(self):
         if self.config_file.exists():
