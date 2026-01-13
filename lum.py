@@ -102,8 +102,7 @@ class StreamHandler:
             if self.config_file.exists():
                 data = json.loads(self.config_file.read_text())
                 return data.get("sidhi_id")
-        except:
-            return None
+        except: return None
         return None
 
     async def start_broadcast(self, filename):
@@ -115,42 +114,72 @@ class StreamHandler:
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
         uri = f"{ws_url}/stream/source/{username}?token={self.token}"
         
-        connect_args = {
-            "ping_interval": 20, 
-            "ping_timeout": 20,
-            "close_timeout": 5
-        }
+        connect_args = {"ping_interval": 20, "ping_timeout": 20, "close_timeout": 5}
 
-        while True:
-            try:
-                async with websockets.connect(uri, **connect_args) as ws:
-                    last_content = ""
-                    while True:
-                        if os.path.exists(filename):
-                            content = Path(filename).read_text()
-                            if content != last_content:
-                                payload = {
-                                    "code": content,
-                                    "file": filename,
-                                    "ts": time.time()
-                                }
-                                await ws.send(json.dumps(payload))
-                                last_content = content
-                                
-                                os.system('cls' if os.name == 'nt' else 'clear')
-                                print(f"\033[1;97;41m  LIVE  \033[0m \033[1;30m Streaming as: \033[1;36m{username}\033[0m")
-                                print(f"\033[1;30m" + "━"*50 + "\033[0m")
-                                print(f"\033[1;30m File:     \033[1;33m{filename}\033[0m")
-                                print(f"\033[1;30m Status:   \033[1;32mHealthy & Syncing\033[0m")
-                                print(f"\033[1;30m" + "━"*50 + "\033[0m")
-                                print(f"\n\033[1;30m[Last sync: {time.strftime('%H:%M:%S')}]\033[0m")
-                                
-                        await asyncio.sleep(0.1)
+        print(f"[*] Initializing secure stream for {username}...")
+        
+        try:
+            while True:
+                try:
+                    async with websockets.connect(uri, **connect_args) as ws:
+                        last_content = ""
+                        while True:
+                            if os.path.exists(filename):
+                                content = Path(filename).read_text()
+                                if content != last_content:
+                                    payload = {"code": content, "file": filename, "ts": time.time()}
+                                    await ws.send(json.dumps(payload))
+                                    last_content = content
+                                    
+                                    os.system('cls' if os.name == 'nt' else 'clear')
+                                    print(f"\033[1;97;41m  LIVE  \033[0m \033[1;30m Streaming as: \033[1;36m{username}\033[0m")
+                                    print(f"\033[1;30m" + "━"*50 + "\033[0m")
+                                    print(f"\033[1;30m File:     \033[1;33m{filename}\033[0m")
+                                    print(f"\033[1;30m Status:   \033[1;32mHealthy & Syncing\033[0m")
+                                    print(f"\033[1;30m" + "━"*50 + "\033[0m")
+                                    print(f"\n\033[1;30m[Last sync: {time.strftime('%H:%M:%S')}]\033[0m")
+                                    print(f"\033[1;30m(Press Ctrl+C to stop stream safely)\033[0m")
+                                    
+                            await asyncio.sleep(0.5)
+                except (websockets.ConnectionClosed, OSError):
+                    print(f"\n\033[1;33m[!] Reconnecting to Lum Relay...\033[0m")
+                    await asyncio.sleep(3)
+        except asyncio.CancelledError:
+            pass
+        except KeyboardInterrupt:
+            print(f"\n\033[1;36m[*] Stream ended peacefully. Closing connection...\033[0m")
+    async def follow_stream(self, target_user):
+        ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
+        uri = f"{ws_url}/stream/follow/{target_user}"
+        
+        print(f"[*] Attaching to {target_user}'s session...")
 
-            except Exception as e:
-                print(f"\n\033[1;31m[!] Connection Lost: {e}\033[0m")
-                await asyncio.sleep(3)
-                continue
+        try:
+            async with websockets.connect(uri) as ws:
+                while True:
+                    msg = await ws.recv()
+                    data = json.loads(msg)
+                    
+                    os.system('cls' if os.name == 'nt' else 'clear')
+                    print(f"\033[1;97;45m WATCHING \033[0m \033[1;30m Source: \033[1;36m{target_user}\033[0m")
+                    print(f"\033[1;30m" + "━"*70 + "\033[0m")
+                    
+                    # Code Display Area
+                    print(data.get('code', 'Waiting for code...'))
+                    
+                    # Chat / Info Footer
+                    print(f"\n\033[1;30m" + "━"*70 + "\033[0m")
+                    print(f"\033[1;37;44m LIVE CHAT \033[0m \033[1;34m (Press Ctrl+C to exit session)\033[0m")
+                    
+                    # Displaying messages if available in the payload
+                    messages = data.get('messages', [])
+                    for m in messages[-3:]: # Show last 3 messages
+                        print(f" \033[1;32m{m['from']}:\033[0m {m['text']}")
+                    
+        except KeyboardInterrupt:
+            print(f"\n\033[1;35m[*] Detached from stream. Have a great study session!\033[0m")
+        except Exception as e:
+            print(f"\n\033[1;31m[!] Follower Error: {e}\033[0m")
 
     async def follow_user(self, target_user):
         ws_url = BASE_URL.replace("https://", "wss://").replace("http://", "ws://")
@@ -323,45 +352,7 @@ class LumCLI:
                         self.time_offset = server_ts - time.time()
             except Exception:
                 pass
-    # def run_manufactured_notebook(self, nb_path):
-    #     print(f"[*] Executing cells in {nb_path} to capture live outputs...")
-    #     with open(nb_path, "r") as f:
-    #         nb = json.load(f)
 
-    #     # Shared namespace for all cells (variables persist from cell 1 to cell N)
-    #     namespace = {}
-
-    #     for cell in nb["cells"]:
-    #         if cell["cell_type"] == "code":
-    #             code = "".join(cell["source"])
-                
-    #             # Redirect stdout to capture the result
-    #             import io
-    #             from contextlib import redirect_stdout
-    #             f = io.StringIO()
-    #             try:
-    #                 with redirect_stdout(f):
-    #                     exec(code, namespace)
-    #                 output_text = f.getvalue()
-                    
-    #                 # Store the actual output in the notebook JSON format
-    #                 cell["outputs"] = [{
-    #                     "name": "stdout",
-    #                     "output_type": "stream",
-    #                     "text": [output_text]
-    #                 }]
-    #                 cell["execution_count"] = 1
-    #             except Exception as e:
-    #                 cell["outputs"] = [{
-    #                     "name": "stderr",
-    #                     "output_type": "stream",
-    #                     "text": [f"Execution Error: {str(e)}"]
-    #                 }]
-
-    #     # Save the notebook with the new outputs
-    #     with open(nb_path, "w") as f:
-    #         json.dump(nb, f, indent=2)
-    #     print(f"[✔] Execution complete. Outputs injected into {nb_path}")
     def get_synced_ts(self):
         return str(int(time.time() + self.time_offset))
     async def generate_notebook(self, input_file, output_file):
@@ -370,7 +361,7 @@ class LumCLI:
             print(f"[!] Input file {input_file} not found.")
             return
         content = Path(input_file).read_text()
-        print(f"[*] Reformatting {input_file} via Lum Engine...")
+        
             
             # Note: Changed endpoint to /ai/format specifically for this task
         endpoint = f"{BASE_URL}/ai/format"
@@ -386,7 +377,7 @@ class LumCLI:
                     result = response.json().get("output")
                     if result:
                         Path(input_file).write_text(self.clean_response(result))
-                        print(f"[✔] {input_file} is now formatted for injection.")
+                        
                 else:
                     print(f"[×] Format failed: {response.text}")
         except Exception as e:
@@ -440,7 +431,7 @@ class LumCLI:
                     notebook["cells"].append({
                         "cell_type": "markdown",
                         "metadata": {},
-                        "source": [f"> **{idx}. {task['filename']}**: {task['question']}"]
+                        "source": [f"> {idx}.{task['question']}"]
                     })
                     
                     # Cell 2: Code Cell (With Live Output)
@@ -923,11 +914,11 @@ class LumCLI:
                 result = await self.run_ai_task("write", "standard", prompt)
                 if result:
                     Path(filename).write_text(result)
-                    print(f"[✔] Code written to {filename}")
+                    print(f"\n\033[1;36m[ Code written to {filename} ]\033[0m")
             else:
                 print("[!] Usage: lum write \"prompt\" <filename>")
 
-        # 4. ASK: lum ask "question"
+        
         elif cmd == "ask":
             question = args[1]
             result = await self.run_ai_task("ask", "standard", question)
@@ -1007,9 +998,14 @@ class LumCLI:
         elif cmd == "logout":
             await self.logout()
             return
+        
+        
         elif cmd == "status" or cmd == "whoami":
             await self.check_auth()
             return
+        
+        
+        # Bulk Injection: lum inject <filename.txt> <foldername>
         elif cmd == "inject":
             await self.sync_clock()
             if len(args) < 2:
@@ -1085,6 +1081,8 @@ class LumCLI:
                     print(f"[×] Failed: {response.text}")
             except Exception as e:
                 print(f"[!] CLI Error: {e}")
+        
+        
         elif cmd == "format":
             if len(args) < 2:
                 print("[!] Usage: lum format <filename.txt>")
@@ -1117,6 +1115,9 @@ class LumCLI:
                     print(f"[×] Format failed: {response.text}")
             except Exception as e:
                 print(f"[!] CLI Error: {e}")         
+        
+        
+        
         # 8. FOLLOW: lum follow <user>
         elif cmd == "follow":
             if len(args) > 1:
@@ -1125,6 +1126,9 @@ class LumCLI:
 
             else:
                 print("[!] Usage: lum follow <username>")
+        
+        
+        # Trace: lum trace <filename>
         elif cmd == "trace":
             if len(args) < 2:
                 print("[!] Usage: lum trace <filename>")
@@ -1193,24 +1197,7 @@ class LumCLI:
                 await self.start_chat(args[1], args[2])
             else:
                 print("[!] Usage: lum chat <channel_name> <password>")
-        # 5. FC (Flowchart): lum fc <filename>
-        elif cmd == "fc":
-            filename = args[1]
-            if os.path.exists(filename):
-                content = Path(filename).read_text()
-                # Returns BYTES (PNG image)
-                result_bytes = await self.run_ai_task("fc", "standard", content)
-                
-                if result_bytes:
-                    out_img = f"{Path(filename).stem}_fc.png"
-                    with open(out_img, "wb") as f:
-                        f.write(result_bytes)
-                    print(f"[✔] ISO Flowchart generated: {out_img}")
-            else:
-                print(f"[!] File {filename} not found.")
-
-        elif cmd == "stcht":
-            print(f"[*] Secure Tunnel to {args[1]} initialized (Feature Pending)...")
+        
 
     def show_help(self):
         print("""
