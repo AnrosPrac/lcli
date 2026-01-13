@@ -863,14 +863,28 @@ class LumCLI:
         
         # 1. FIX: lum fix <filename>
         elif cmd == "fix":
+            if len(args) < 2:
+                print("[!] Usage: lum fix <filename>")
+                return
+
             filename = args[1]
-            if os.path.exists(filename):
-                content = Path(filename).read_text()
-                # Uses 'fix' mode to get pure code back
+            path = Path(filename)
+
+            if path.exists():
+                content = path.read_text()
                 result = await self.run_ai_task("fix", "standard", content)
+                
                 if result:
-                    Path(filename).write_text(result)
-                    print(f"[✔] {filename} has been fixed and updated.")
+                    print(f"\n\033[1;36m[ Lum has prepared a fix for {filename} ]\033[0m")
+                    choice = input("Replace current file or create new? (r/n): ").lower().strip()
+
+                    if choice == 'n':
+                        new_filename = f"{path.stem}_fixed{path.suffix}"
+                        Path(new_filename).write_text(result)
+                        print(f"[✔] Fixed version saved as: {new_filename}")
+                    else:
+                        path.write_text(result)
+                        print(f"[✔] {filename} has been updated.")
             else:
                 print(f"[!] File {filename} not found.")
 
