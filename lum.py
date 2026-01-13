@@ -634,6 +634,7 @@ class LumCLI:
         }
 
     async def run_ai_task(self, mode, version, input_text):
+        await self.sync_clock()
         payload = {
             "mode": mode,
             "version": version,
