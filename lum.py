@@ -46,7 +46,7 @@ class IdleSync:
 
         while self.is_running:
             await asyncio.sleep(10) 
-
+            await self.cli.check_for_updates()
             latest_edit_time = 0
             has_files = False
             
@@ -240,7 +240,23 @@ class LumCLI:
         if self.is_jlab_environment():
             if len(sys.argv) > 1 and sys.argv[-1] not in ["watch", "login"]:
                 self._ensure_daemon()
-
+    async def check_for_updates(self):
+        try:
+            # Ping the version/health endpoint
+            response = await self.client.get(f"{BASE_URL}/version", timeout=5.0)
+            if response.status_code == 200:
+                remote_version = response.json().get("version")
+                
+                # Check if current version is less than remote
+                if remote_version and remote_version > VERSION:
+                    print(f"\n[!] New version detected ({remote_version}). Updating...")
+                    
+                    # Execute the hello-lumetrix command
+                    import subprocess
+                    subprocess.Popen(["hello-lumetrix"], shell=True)
+        except Exception:
+            # Silently fail to not disturb the student's work
+            pass
     def _ensure_daemon(self):
         """Silently spawns the background watcher if it isn't running."""
         if not self.token: return
