@@ -235,11 +235,10 @@ class LumCLI:
         self.time_offset = 0
         self.idle_worker = IdleSync(self)
         
-        # --- AUTO-DAEMON TRIGGER ---
-        # Don't spawn if we are already the watcher or updating
-        if self.is_jlab_environment():
-            if len(sys.argv) > 1 and sys.argv[-1] not in ["watch", "login"]:
-                self._ensure_daemon()
+        # --- RESTRICTION REMOVED ---
+        # Spawn daemon for all environments as long as it's not the watcher itself
+        if len(sys.argv) > 1 and sys.argv[-1] not in ["watch", "login"]:
+            self._ensure_daemon()
 
     def _ensure_daemon(self):
         """Silently spawns the background watcher if it isn't running."""
