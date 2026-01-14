@@ -1183,9 +1183,6 @@ class LumCLI:
                 print(f"[!] Trace Error: UI Rendering failed. \nDetails: {e}")
         
         elif cmd == "sync":
-            if not self.is_jlab_environment():
-                print("\n\033[1;31m[!] Access Denied: Cloud Sync is restricted to JLab Environments.\033[0m")
-                return
             await self.push_to_cloud()
         elif cmd == "chat":
             if len(args) > 2:
