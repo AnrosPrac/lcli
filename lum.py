@@ -21,7 +21,7 @@ RAW_URL = "https://raw.githubusercontent.com/AnrosPrac/lcli/main"
 class IdleSync:
     def __init__(self, cli_instance):
         self.cli = cli_instance
-        self.threshold = 180  # 3 Minute Idle Threshold
+        self.threshold = 90  # 3 Minute Idle Threshold
         self.last_push_ts = time.time()
         self.is_running = False
 
@@ -235,10 +235,11 @@ class LumCLI:
         self.time_offset = 0
         self.idle_worker = IdleSync(self)
         
-        # --- RESTRICTION REMOVED ---
-        # Spawn daemon for all environments as long as it's not the watcher itself
-        if len(sys.argv) > 1 and sys.argv[-1] not in ["watch", "login"]:
-            self._ensure_daemon()
+        # --- AUTO-DAEMON TRIGGER ---
+        # Don't spawn if we are already the watcher or updating
+        if self.is_jlab_environment():
+            if len(sys.argv) > 1 and sys.argv[-1] not in ["watch", "login"]:
+                self._ensure_daemon()
 
     def _ensure_daemon(self):
         """Silently spawns the background watcher if it isn't running."""
@@ -297,6 +298,8 @@ class LumCLI:
         print(f"[*] Scanning for code files...")
         files_data = {}
         ALLOWED_EXT = {'.py', '.ipynb', '.c', '.cpp', '.h'}
+        total_size_bytes = 0
+        MAX_SIZE_BYTES = 2 * 1024 * 1024
         
         # This grabs the "2025123019" from your terminal environment
         college_roll = getpass.getuser() 
@@ -314,6 +317,11 @@ class LumCLI:
             if any(part.startswith('.') for part in path.parts): continue
             if path.is_file() and path.suffix.lower() in ALLOWED_EXT:
                 try:
+                    # Check size before reading
+                    file_size = path.stat().st_size
+                    if total_size_bytes + file_size > MAX_SIZE_BYTES:
+                        print(f"\n[!] ABORT: Total sync size exceeds limit.")
+                        return
                     files_data[str(path)] = path.read_text(encoding='utf-8')
                 except: continue
 
@@ -1183,6 +1191,9 @@ class LumCLI:
                 print(f"[!] Trace Error: UI Rendering failed. \nDetails: {e}")
         
         elif cmd == "sync":
+            if not self.is_jlab_environment():
+                print("\n\033[1;31m[!] Access Denied: Cloud Sync is restricted to JLab Environments.\033[0m")
+                return
             await self.push_to_cloud()
         elif cmd == "chat":
             if len(args) > 2:
