@@ -14,7 +14,7 @@ import binascii
 
 
 VERSION = "1.0.0"
-BASE_URL = "https://test-termial.onrender.com" 
+BASE_URL = "https://lumetrix-backend.sidhi.xyz" 
 RAW_URL = "https://raw.githubusercontent.com/AnrosPrac/lcli/main"
  # Ensure this is your live URL
 # --- REPLACE THE OLD IdleSync CLASS WITH THIS ---
