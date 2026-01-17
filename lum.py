@@ -345,325 +345,325 @@ class LumCLI:
             print(f"\033[1;31m[!] Error: {e}\033[0m")
 
 
-async def fetch_cloud_history(self):
-    """Fetch user's cloud push history with beautiful formatting"""
-    try:
-        if not self.config_file.exists():
-            print("\033[1;31m[!] Not logged in.\033[0m")
-            return
-        
-        data = json.loads(self.config_file.read_text())
-        sidhi_id = data.get("sidhi_id")
-        
-        response = await self.client.get(
-            f"{BASE_URL}/me/cloud-history?sidhi_id={sidhi_id}",
-            headers=self._signed_headers("/me/cloud-history")
-        )
-        
-        if response.status_code == 401:
-            refreshed = await self.refresh_token()
-            if not refreshed:
-                print("\033[1;31m[!] Session expired. Please login again.\033[0m")
+    async def fetch_cloud_history(self):
+        """Fetch user's cloud push history with beautiful formatting"""
+        try:
+            if not self.config_file.exists():
+                print("\033[1;31m[!] Not logged in.\033[0m")
                 return
+            
+            data = json.loads(self.config_file.read_text())
+            sidhi_id = data.get("sidhi_id")
             
             response = await self.client.get(
                 f"{BASE_URL}/me/cloud-history?sidhi_id={sidhi_id}",
                 headers=self._signed_headers("/me/cloud-history")
             )
-        
-        if response.status_code == 200:
-            result = response.json()
-            pushes = result.get("pushes", [])
             
-            if not pushes:
-                print("\n\033[1;33m[i] No cloud sync history found.\033[0m")
-                return
-            
-            print(f"\n\033[1;36m╔══════════════════════════════════════════════════════════╗\033[0m")
-            print(f"\033[1;36m║          ☁️  CLOUD SYNC HISTORY                         ║\033[0m")
-            print(f"\033[1;36m╚══════════════════════════════════════════════════════════╝\033[0m\n")
-            
-            # Show last 15 pushes (most recent first - already sorted by backend)
-            recent_pushes = pushes[-15:][::-1]  # Reverse to show newest first
-            
-            for idx, push in enumerate(recent_pushes, 1):
-                timestamp = push.get("time", "N/A")
-                icon = "🔵" if idx == 1 else "⚪"
+            if response.status_code == 401:
+                refreshed = await self.refresh_token()
+                if not refreshed:
+                    print("\033[1;31m[!] Session expired. Please login again.\033[0m")
+                    return
                 
-                print(f"  {icon} \033[1;32m{timestamp}\033[0m")
+                response = await self.client.get(
+                    f"{BASE_URL}/me/cloud-history?sidhi_id={sidhi_id}",
+                    headers=self._signed_headers("/me/cloud-history")
+                )
             
-            print(f"\n\033[1;36m{'─' * 60}\033[0m")
-            print(f"\033[1;97m  📦 Total Cloud Syncs: {len(pushes)}\033[0m")
-            print(f"\033[1;90m  (Showing last {len(recent_pushes)} syncs)\033[0m")
-            print(f"\033[1;36m{'─' * 60}\033[0m\n")
-        else:
-            print(f"\033[1;31m[!] Failed to fetch cloud history: {response.text}\033[0m")
-    
-    except Exception as e:
-        print(f"\033[1;31m[!] Error: {e}\033[0m")
-
-
-async def fetch_quotas(self):
-    """Fetch user's AI quotas with beautiful formatting"""
-    try:
-        response = await self.client.get(
-            f"{BASE_URL}/me/quotas",
-            headers=self._signed_headers("/me/quotas")
-        )
+            if response.status_code == 200:
+                result = response.json()
+                pushes = result.get("pushes", [])
+                
+                if not pushes:
+                    print("\n\033[1;33m[i] No cloud sync history found.\033[0m")
+                    return
+                
+                print(f"\n\033[1;36m╔══════════════════════════════════════════════════════════╗\033[0m")
+                print(f"\033[1;36m║          ☁️  CLOUD SYNC HISTORY                         ║\033[0m")
+                print(f"\033[1;36m╚══════════════════════════════════════════════════════════╝\033[0m\n")
+                
+                # Show last 15 pushes (most recent first - already sorted by backend)
+                recent_pushes = pushes[-15:][::-1]  # Reverse to show newest first
+                
+                for idx, push in enumerate(recent_pushes, 1):
+                    timestamp = push.get("time", "N/A")
+                    icon = "🔵" if idx == 1 else "⚪"
+                    
+                    print(f"  {icon} \033[1;32m{timestamp}\033[0m")
+                
+                print(f"\n\033[1;36m{'─' * 60}\033[0m")
+                print(f"\033[1;97m  📦 Total Cloud Syncs: {len(pushes)}\033[0m")
+                print(f"\033[1;90m  (Showing last {len(recent_pushes)} syncs)\033[0m")
+                print(f"\033[1;36m{'─' * 60}\033[0m\n")
+            else:
+                print(f"\033[1;31m[!] Failed to fetch cloud history: {response.text}\033[0m")
         
-        if response.status_code == 401:
-            refreshed = await self.refresh_token()
-            if not refreshed:
-                print("\033[1;31m[!] Session expired. Please login again.\033[0m")
-                return
-            
+        except Exception as e:
+            print(f"\033[1;31m[!] Error: {e}\033[0m")
+
+
+    async def fetch_quotas(self):
+        """Fetch user's AI quotas with beautiful formatting"""
+        try:
             response = await self.client.get(
                 f"{BASE_URL}/me/quotas",
                 headers=self._signed_headers("/me/quotas")
             )
+            
+            if response.status_code == 401:
+                refreshed = await self.refresh_token()
+                if not refreshed:
+                    print("\033[1;31m[!] Session expired. Please login again.\033[0m")
+                    return
+                
+                response = await self.client.get(
+                    f"{BASE_URL}/me/quotas",
+                    headers=self._signed_headers("/me/quotas")
+                )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                tier = data.get("tier", "free").upper()
+                base = data.get("base", {})
+                used = data.get("used", {})
+                addons = data.get("addons", {})
+                
+                # Tier color
+                tier_color = {
+                    "FREE": "\033[1;37m",
+                    "HERO": "\033[1;33m",
+                    "DOMINATOR": "\033[1;35m"
+                }.get(tier, "\033[1;37m")
+                
+                print(f"\n\033[1;36m╔══════════════════════════════════════════════════════════╗\033[0m")
+                print(f"\033[1;36m║          {tier_color}⚡ {tier} TIER QUOTAS\033[1;36m                              ║\033[0m")
+                print(f"\033[1;36m╚══════════════════════════════════════════════════════════╝\033[0m\n")
+                
+                # Commands Section
+                print(f"\033[1;33m🛠️  COMMAND QUOTAS\033[0m")
+                print("─" * 60)
+                
+                commands = base.get("commands", {})
+                used_commands = used.get("commands", {})
+                
+                for cmd in sorted(commands.keys()):
+                    limit = commands[cmd]
+                    used_count = used_commands.get(cmd, 0)
+                    addon = addons.get(cmd, 0)
+                    
+                    total_limit = limit + addon
+                    remaining = total_limit - used_count
+                    percentage = (used_count / total_limit * 100) if total_limit > 0 else 0
+                    
+                    # Progress bar
+                    bar_length = 20
+                    filled = int((used_count / total_limit) * bar_length) if total_limit > 0 else 0
+                    bar = "█" * filled + "░" * (bar_length - filled)
+                    
+                    # Color based on usage
+                    if percentage >= 90:
+                        color = "\033[1;31m"  # Red
+                    elif percentage >= 70:
+                        color = "\033[1;33m"  # Yellow
+                    else:
+                        color = "\033[1;32m"  # Green
+                    
+                    print(f"  {cmd.upper():<12} {color}[{bar}]\033[0m {used_count}/{total_limit} ({remaining} left)")
+                
+                print()
+                
+                # Features Section
+                print(f"\033[1;33m🎯 FEATURE QUOTAS\033[0m")
+                print("─" * 60)
+                
+                features = ["inject", "cells", "pdf", "convo"]
+                feature_names = {
+                    "inject": "Code Injection",
+                    "cells": "Notebook Cells",
+                    "pdf": "PDF Processing",
+                    "convo": "AI Conversations"
+                }
+                
+                for feat in features:
+                    limit = base.get(feat, 0)
+                    used_count = used.get(feat, 0)
+                    addon = addons.get(feat, 0)
+                    
+                    total_limit = limit + addon
+                    remaining = total_limit - used_count
+                    percentage = (used_count / total_limit * 100) if total_limit > 0 else 0
+                    
+                    # Progress bar
+                    bar_length = 20
+                    filled = int((used_count / total_limit) * bar_length) if total_limit > 0 else 0
+                    bar = "█" * filled + "░" * (bar_length - filled)
+                    
+                    # Color based on usage
+                    if percentage >= 90:
+                        color = "\033[1;31m"
+                    elif percentage >= 70:
+                        color = "\033[1;33m"
+                    else:
+                        color = "\033[1;32m"
+                    
+                    feature_name = feature_names.get(feat, feat.upper())
+                    print(f"  {feature_name:<18} {color}[{bar}]\033[0m {used_count}/{total_limit}")
+                
+                print(f"\n\033[1;36m{'═' * 60}\033[0m")
+                
+                # Expiry info if exists
+                meta = data.get("meta", {})
+                expires_at = meta.get("expires_at")
+                if expires_at:
+                    from datetime import datetime
+                    expiry_date = expires_at.get("$date") if isinstance(expires_at, dict) else expires_at
+                    if expiry_date:
+                        print(f"\033[1;90m  📅 Expires: {expiry_date[:10]}\033[0m")
+                
+                print(f"\033[1;36m{'═' * 60}\033[0m\n")
+            else:
+                print(f"\033[1;31m[!] Failed to fetch quotas: {response.text}\033[0m")
         
-        if response.status_code == 200:
-            data = response.json()
-            
-            tier = data.get("tier", "free").upper()
-            base = data.get("base", {})
-            used = data.get("used", {})
-            addons = data.get("addons", {})
-            
-            # Tier color
-            tier_color = {
-                "FREE": "\033[1;37m",
-                "HERO": "\033[1;33m",
-                "DOMINATOR": "\033[1;35m"
-            }.get(tier, "\033[1;37m")
-            
-            print(f"\n\033[1;36m╔══════════════════════════════════════════════════════════╗\033[0m")
-            print(f"\033[1;36m║          {tier_color}⚡ {tier} TIER QUOTAS\033[1;36m                              ║\033[0m")
-            print(f"\033[1;36m╚══════════════════════════════════════════════════════════╝\033[0m\n")
-            
-            # Commands Section
-            print(f"\033[1;33m🛠️  COMMAND QUOTAS\033[0m")
-            print("─" * 60)
-            
-            commands = base.get("commands", {})
-            used_commands = used.get("commands", {})
-            
-            for cmd in sorted(commands.keys()):
-                limit = commands[cmd]
-                used_count = used_commands.get(cmd, 0)
-                addon = addons.get(cmd, 0)
-                
-                total_limit = limit + addon
-                remaining = total_limit - used_count
-                percentage = (used_count / total_limit * 100) if total_limit > 0 else 0
-                
-                # Progress bar
-                bar_length = 20
-                filled = int((used_count / total_limit) * bar_length) if total_limit > 0 else 0
-                bar = "█" * filled + "░" * (bar_length - filled)
-                
-                # Color based on usage
-                if percentage >= 90:
-                    color = "\033[1;31m"  # Red
-                elif percentage >= 70:
-                    color = "\033[1;33m"  # Yellow
-                else:
-                    color = "\033[1;32m"  # Green
-                
-                print(f"  {cmd.upper():<12} {color}[{bar}]\033[0m {used_count}/{total_limit} ({remaining} left)")
-            
-            print()
-            
-            # Features Section
-            print(f"\033[1;33m🎯 FEATURE QUOTAS\033[0m")
-            print("─" * 60)
-            
-            features = ["inject", "cells", "pdf", "convo"]
-            feature_names = {
-                "inject": "Code Injection",
-                "cells": "Notebook Cells",
-                "pdf": "PDF Processing",
-                "convo": "AI Conversations"
-            }
-            
-            for feat in features:
-                limit = base.get(feat, 0)
-                used_count = used.get(feat, 0)
-                addon = addons.get(feat, 0)
-                
-                total_limit = limit + addon
-                remaining = total_limit - used_count
-                percentage = (used_count / total_limit * 100) if total_limit > 0 else 0
-                
-                # Progress bar
-                bar_length = 20
-                filled = int((used_count / total_limit) * bar_length) if total_limit > 0 else 0
-                bar = "█" * filled + "░" * (bar_length - filled)
-                
-                # Color based on usage
-                if percentage >= 90:
-                    color = "\033[1;31m"
-                elif percentage >= 70:
-                    color = "\033[1;33m"
-                else:
-                    color = "\033[1;32m"
-                
-                feature_name = feature_names.get(feat, feat.upper())
-                print(f"  {feature_name:<18} {color}[{bar}]\033[0m {used_count}/{total_limit}")
-            
-            print(f"\n\033[1;36m{'═' * 60}\033[0m")
-            
-            # Expiry info if exists
-            meta = data.get("meta", {})
-            expires_at = meta.get("expires_at")
-            if expires_at:
-                from datetime import datetime
-                expiry_date = expires_at.get("$date") if isinstance(expires_at, dict) else expires_at
-                if expiry_date:
-                    print(f"\033[1;90m  📅 Expires: {expiry_date[:10]}\033[0m")
-            
-            print(f"\033[1;36m{'═' * 60}\033[0m\n")
-        else:
-            print(f"\033[1;31m[!] Failed to fetch quotas: {response.text}\033[0m")
-    
-    except Exception as e:
-        print(f"\033[1;31m[!] Error: {e}\033[0m")
+        except Exception as e:
+            print(f"\033[1;31m[!] Error: {e}\033[0m")
 
 
-async def fetch_order_history(self):
-    """Fetch user's order history with beautiful formatting"""
-    try:
-        response = await self.client.get(
-            f"{BASE_URL}/orders/history",
-            headers=self._signed_headers("/orders/history")
-        )
-        
-        if response.status_code == 401:
-            refreshed = await self.refresh_token()
-            if not refreshed:
-                print("\033[1;31m[!] Session expired. Please login again.\033[0m")
-                return
-            
+    async def fetch_order_history(self):
+        """Fetch user's order history with beautiful formatting"""
+        try:
             response = await self.client.get(
                 f"{BASE_URL}/orders/history",
                 headers=self._signed_headers("/orders/history")
             )
+            
+            if response.status_code == 401:
+                refreshed = await self.refresh_token()
+                if not refreshed:
+                    print("\033[1;31m[!] Session expired. Please login again.\033[0m")
+                    return
+                
+                response = await self.client.get(
+                    f"{BASE_URL}/orders/history",
+                    headers=self._signed_headers("/orders/history")
+                )
+            
+            if response.status_code == 200:
+                result = response.json()
+                orders = result.get("orders", [])
+                
+                if not orders:
+                    print("\n\033[1;33m[i] No orders found.\033[0m")
+                    return
+                
+                print(f"\n\033[1;36m╔══════════════════════════════════════════════════════════╗\033[0m")
+                print(f"\033[1;36m║          📦 ORDER HISTORY                                ║\033[0m")
+                print(f"\033[1;36m╚══════════════════════════════════════════════════════════╝\033[0m\n")
+                
+                for order in orders:
+                    order_id = order.get("ORDER_ID", "N/A")
+                    folder = order.get("SUMMARY", {}).get("folder_name", "N/A")
+                    status = order.get("STATUS", "unknown")
+                    placed_at = order.get("PLACED_AT", "N/A")
+                    
+                    # Status styling
+                    if status == "COMPLETED":
+                        status_display = "\033[1;32m✓ COMPLETED\033[0m"
+                    elif status == "QUEUED":
+                        status_display = "\033[1;33m⏳ QUEUED\033[0m"
+                    elif status == "PROCESSING":
+                        status_display = "\033[1;34m⚙️  PROCESSING\033[0m"
+                    else:
+                        status_display = f"\033[1;31m✗ {status}\033[0m"
+                    
+                    print(f"\033[1;97m  Order #{order_id}\033[0m")
+                    print(f"  Folder  : \033[1;36m{folder}\033[0m")
+                    print(f"  Status  : {status_display}")
+                    print(f"  Date    : \033[1;90m{placed_at[:10]}\033[0m")
+                    print("─" * 60)
+                
+                print(f"\n\033[1;97m  📊 Total Orders: {len(orders)}\033[0m")
+                print(f"\033[1;36m{'═' * 60}\033[0m\n")
+            else:
+                print(f"\033[1;31m[!] Failed to fetch orders: {response.text}\033[0m")
         
-        if response.status_code == 200:
-            result = response.json()
-            orders = result.get("orders", [])
-            
-            if not orders:
-                print("\n\033[1;33m[i] No orders found.\033[0m")
-                return
-            
-            print(f"\n\033[1;36m╔══════════════════════════════════════════════════════════╗\033[0m")
-            print(f"\033[1;36m║          📦 ORDER HISTORY                                ║\033[0m")
-            print(f"\033[1;36m╚══════════════════════════════════════════════════════════╝\033[0m\n")
-            
-            for order in orders:
-                order_id = order.get("ORDER_ID", "N/A")
-                folder = order.get("SUMMARY", {}).get("folder_name", "N/A")
-                status = order.get("STATUS", "unknown")
-                placed_at = order.get("PLACED_AT", "N/A")
-                
-                # Status styling
-                if status == "COMPLETED":
-                    status_display = "\033[1;32m✓ COMPLETED\033[0m"
-                elif status == "QUEUED":
-                    status_display = "\033[1;33m⏳ QUEUED\033[0m"
-                elif status == "PROCESSING":
-                    status_display = "\033[1;34m⚙️  PROCESSING\033[0m"
-                else:
-                    status_display = f"\033[1;31m✗ {status}\033[0m"
-                
-                print(f"\033[1;97m  Order #{order_id}\033[0m")
-                print(f"  Folder  : \033[1;36m{folder}\033[0m")
-                print(f"  Status  : {status_display}")
-                print(f"  Date    : \033[1;90m{placed_at[:10]}\033[0m")
-                print("─" * 60)
-            
-            print(f"\n\033[1;97m  📊 Total Orders: {len(orders)}\033[0m")
-            print(f"\033[1;36m{'═' * 60}\033[0m\n")
-        else:
-            print(f"\033[1;31m[!] Failed to fetch orders: {response.text}\033[0m")
-    
-    except Exception as e:
-        print(f"\033[1;31m[!] Error: {e}\033[0m")
+        except Exception as e:
+            print(f"\033[1;31m[!] Error: {e}\033[0m")
 
 
-async def fetch_payment_history(self):
-    """Fetch user's payment history with beautiful formatting"""
-    try:
-        response = await self.client.get(
-            f"{BASE_URL}/me/payments/history",
-            headers=self._signed_headers("/me/payments/history")
-        )
-        
-        if response.status_code == 401:
-            refreshed = await self.refresh_token()
-            if not refreshed:
-                print("\033[1;31m[!] Session expired. Please login again.\033[0m")
-                return
-            
+    async def fetch_payment_history(self):
+        """Fetch user's payment history with beautiful formatting"""
+        try:
             response = await self.client.get(
                 f"{BASE_URL}/me/payments/history",
                 headers=self._signed_headers("/me/payments/history")
             )
+            
+            if response.status_code == 401:
+                refreshed = await self.refresh_token()
+                if not refreshed:
+                    print("\033[1;31m[!] Session expired. Please login again.\033[0m")
+                    return
+                
+                response = await self.client.get(
+                    f"{BASE_URL}/me/payments/history",
+                    headers=self._signed_headers("/me/payments/history")
+                )
+            
+            if response.status_code == 200:
+                result = response.json()
+                payments = result.get("payments", [])
+                
+                if not payments:
+                    print("\n\033[1;33m[i] No payment history found.\033[0m")
+                    return
+                
+                print(f"\n\033[1;36m╔══════════════════════════════════════════════════════════╗\033[0m")
+                print(f"\033[1;36m║          💳 PAYMENT HISTORY                              ║\033[0m")
+                print(f"\033[1;36m╚══════════════════════════════════════════════════════════╝\033[0m\n")
+                
+                for payment in payments:
+                    tier = payment.get("tier", "N/A").upper()
+                    amount = payment.get("amount", 0)
+                    status = payment.get("status", "unknown")
+                    created = payment.get("created_at", {})
+                    expires = payment.get("expires_at", {})
+                    
+                    # Extract date strings
+                    created_date = created.get("$date", "N/A") if isinstance(created, dict) else str(created)
+                    expires_date = expires.get("$date", "N/A") if isinstance(expires, dict) else str(expires)
+                    
+                    # Tier color
+                    tier_color = {
+                        "HERO": "\033[1;33m",
+                        "DOMINATOR": "\033[1;35m",
+                        "FREE": "\033[1;37m"
+                    }.get(tier, "\033[1;37m")
+                    
+                    # Status styling
+                    if status == "captured":
+                        status_display = "\033[1;32m✓ SUCCESSFUL\033[0m"
+                    elif status == "failed":
+                        status_display = "\033[1;31m✗ FAILED\033[0m"
+                    else:
+                        status_display = f"\033[1;33m⏳ {status.upper()}\033[0m"
+                    
+                    print(f"  {tier_color}⚡ {tier} TIER\033[0m")
+                    print(f"  Amount  : \033[1;32m₹{amount}\033[0m")
+                    print(f"  Status  : {status_display}")
+                    print(f"  Paid On : \033[1;90m{created_date[:10]}\033[0m")
+                    print(f"  Expires : \033[1;90m{expires_date[:10]}\033[0m")
+                    print("─" * 60)
+                
+                total_spent = sum(p.get("amount", 0) for p in payments if p.get("status") == "captured")
+                print(f"\n\033[1;97m  💰 Total Spent: ₹{total_spent}\033[0m")
+                print(f"\033[1;36m{'═' * 60}\033[0m\n")
+            else:
+                print(f"\033[1;31m[!] Failed to fetch payments: {response.text}\033[0m")
         
-        if response.status_code == 200:
-            result = response.json()
-            payments = result.get("payments", [])
-            
-            if not payments:
-                print("\n\033[1;33m[i] No payment history found.\033[0m")
-                return
-            
-            print(f"\n\033[1;36m╔══════════════════════════════════════════════════════════╗\033[0m")
-            print(f"\033[1;36m║          💳 PAYMENT HISTORY                              ║\033[0m")
-            print(f"\033[1;36m╚══════════════════════════════════════════════════════════╝\033[0m\n")
-            
-            for payment in payments:
-                tier = payment.get("tier", "N/A").upper()
-                amount = payment.get("amount", 0)
-                status = payment.get("status", "unknown")
-                created = payment.get("created_at", {})
-                expires = payment.get("expires_at", {})
-                
-                # Extract date strings
-                created_date = created.get("$date", "N/A") if isinstance(created, dict) else str(created)
-                expires_date = expires.get("$date", "N/A") if isinstance(expires, dict) else str(expires)
-                
-                # Tier color
-                tier_color = {
-                    "HERO": "\033[1;33m",
-                    "DOMINATOR": "\033[1;35m",
-                    "FREE": "\033[1;37m"
-                }.get(tier, "\033[1;37m")
-                
-                # Status styling
-                if status == "captured":
-                    status_display = "\033[1;32m✓ SUCCESSFUL\033[0m"
-                elif status == "failed":
-                    status_display = "\033[1;31m✗ FAILED\033[0m"
-                else:
-                    status_display = f"\033[1;33m⏳ {status.upper()}\033[0m"
-                
-                print(f"  {tier_color}⚡ {tier} TIER\033[0m")
-                print(f"  Amount  : \033[1;32m₹{amount}\033[0m")
-                print(f"  Status  : {status_display}")
-                print(f"  Paid On : \033[1;90m{created_date[:10]}\033[0m")
-                print(f"  Expires : \033[1;90m{expires_date[:10]}\033[0m")
-                print("─" * 60)
-            
-            total_spent = sum(p.get("amount", 0) for p in payments if p.get("status") == "captured")
-            print(f"\n\033[1;97m  💰 Total Spent: ₹{total_spent}\033[0m")
-            print(f"\033[1;36m{'═' * 60}\033[0m\n")
-        else:
-            print(f"\033[1;31m[!] Failed to fetch payments: {response.text}\033[0m")
-    
-    except Exception as e:
-        print(f"\033[1;31m[!] Error: {e}\033[0m")
+        except Exception as e:
+            print(f"\033[1;31m[!] Error: {e}\033[0m")
     def _ensure_daemon(self):
         """Silently spawns the background watcher if it isn't running."""
         if not self.token: return
