@@ -797,64 +797,7 @@ class LumCLI:
             except:
                 return None
         return None
-    async def auto_update(self):
-        try:
-            print(f"[*] Checking for updates.... (Current: v{VERSION})")
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                # Fetch code
-                resp = await client.get(f"{RAW_URL}/lum.py")
-                if resp.status_code != 200:
-                    print("[!] Update check failed")
-                    return
-                
-                # Fetch hash file
-                hash_resp = await client.get(f"{RAW_URL}/lum.py.sha256")
-                if hash_resp.status_code != 200:
-                    print("[!] Cannot verify update integrity - skipping")
-                    return
-                
-                expected_hash = hash_resp.text.strip().split()[0]
-                
-                # Verify hash
-                import hashlib
-                actual_hash = hashlib.sha256(resp.content).hexdigest()
-                
-                if actual_hash != expected_hash:
-                    print("\033[1;31m[!] Update verification FAILED - possible tampering detected!\033[0m")
-                    return
-                
-                # Check version
-                remote_match = re.search(r'VERSION = "([^"]+)"', resp.text)
-                if remote_match:
-                    remote_version = remote_match.group(1)
-                    
-                    if remote_version != VERSION:
-                        print(f"[!] New version found: {remote_version}")
-                        confirm = input("Update now? (yes/no): ").lower().strip()
-                        
-                        if confirm != 'yes':
-                            print("[*] Update skipped")
-                            return
-                        
-                        print("[*] Installing verified update...")
-                        current_file = os.path.abspath(__file__)
-                        
-                        # Backup current version
-                        backup = f"{current_file}.backup"
-                        import shutil
-                        shutil.copy2(current_file, backup)
-                        
-                        # Write new version
-                        with open(current_file, "wb") as f:
-                            f.write(resp.content)
-                        
-                        print(f"[✓] Update complete (backup: {backup})")
-                        print("[*] Please restart the CLI")
-                        sys.exit(0)
-                    else:
-                        print(f"\033[90m[v{VERSION}] Engine up to date\033[0m")
-        except Exception as e:
-            print(f"[!] Update check failed: {self._safe_error(str(e))}")
+    
     
     
     async def push_to_cloud(self):
@@ -1110,7 +1053,7 @@ class LumCLI:
                 return False
 
     async def login(self):
-        await self.auto_update()
+        
         await self.sync_clock()
         print("--- Lum Engine Secure Login ---")
 
