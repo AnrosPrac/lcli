@@ -18,97 +18,6 @@ BASE_URL = "https://lumetrix-backend.sidhi.xyz"
 RAW_URL = "https://raw.githubusercontent.com/AnrosPrac/lcli/main"
  # Ensure this is your live URL
 # --- REPLACE THE OLD IdleSync CLASS WITH THIS ---
-from datetime import datetime, timedelta
-
-class RateLimiter:
-    """Prevent API abuse with client-side rate limiting"""
-    def __init__(self):
-        self.requests = {}
-        self.limits = {
-            'ask': (10, 60),       # 10 per minute
-            'write': (5, 60),
-            'fix': (8, 60),
-            'trace': (3, 60),
-            'diff': (5, 60),
-            'algo': (5, 60),
-            'explain': (8, 60),
-            'inject': (2, 300),    # 2 per 5 minutes (heavy)
-            'cells': (2, 300),
-            'format': (10, 60)
-        }
-    
-    def check(self, command: str) -> bool:
-        """Returns True if allowed, False if rate limited"""
-        if command not in self.limits:
-            return True
-        
-        max_req, window = self.limits[command]
-        now = datetime.now()
-        
-        if command not in self.requests:
-            self.requests[command] = []
-        
-        # Clean old requests
-        self.requests[command] = [
-            ts for ts in self.requests[command]
-            if now - ts < timedelta(seconds=window)
-        ]
-        
-        if len(self.requests[command]) >= max_req:
-            wait = window - (now - self.requests[command][0]).seconds
-            print(f"\033[1;31m[!] Rate limit: Wait {wait}s before using '{command}' again\033[0m")
-            return False
-        
-        self.requests[command].append(now)
-        return True
-class InputSanitizer:
-    """Sanitizes all user inputs to prevent injection attacks"""
-    
-    @staticmethod
-    def sanitize_filename(name: str, max_len: int = 255) -> str:
-        """Clean filename - block path traversal"""
-        if not name or len(name) > max_len:
-            raise ValueError("[!] Invalid filename length")
-        
-        # Remove dangerous chars
-        clean = re.sub(r'[^\w\s.-]', '', name)
-        clean = clean.replace('..', '')
-        clean = clean.strip('. ')
-        
-        if not clean:
-            raise ValueError("[!] Invalid filename")
-        
-        return clean
-    
-    @staticmethod
-    def sanitize_channel_name(name: str) -> str:
-        """Only alphanumeric + dash/underscore"""
-        clean = re.sub(r'[^a-zA-Z0-9_-]', '', name)
-        
-        if len(clean) < 3 or len(clean) > 32:
-            raise ValueError("[!] Channel name must be 3-32 characters (alphanumeric)")
-        
-        return clean
-    
-    @staticmethod
-    def sanitize_username(name: str) -> str:
-        """Clean usernames for follow/stream"""
-        clean = re.sub(r'[^a-zA-Z0-9_-]', '', name)
-        
-        if len(clean) < 2 or len(clean) > 50:
-            raise ValueError("[!] Username must be 2-50 characters")
-        
-        return clean
-    
-    @staticmethod
-    def sanitize_text(text: str, max_len: int = 50000) -> str:
-        """Remove control characters, limit length"""
-        if len(text) > max_len:
-            raise ValueError(f"[!] Input too long (max {max_len} chars)")
-        
-        # Remove null bytes and most control chars (keep \n, \t)
-        clean = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', text)
-        return clean
 class IdleSync:
     def __init__(self, cli_instance):
         self.cli = cli_instance
@@ -326,14 +235,12 @@ class LumCLI:
         self.client = httpx.AsyncClient(timeout=180.0)
         self.time_offset = 0
         self.idle_worker = IdleSync(self)
-        self.rate_limiter = RateLimiter()
         
         # --- AUTO-DAEMON TRIGGER ---
         # Don't spawn if we are already the watcher or updating
         if self.is_jlab_environment():
             if len(sys.argv) > 1 and sys.argv[-1] not in ["watch", "login"]:
                 self._ensure_daemon()
-    
     async def check_for_updates(self):
         try:
             # Ping the version/health endpoint
@@ -623,18 +530,7 @@ class LumCLI:
         except Exception as e:
             print(f"\033[1;31m[!] Error: {e}\033[0m")
 
-    def _safe_error(self, error_msg: str) -> str:
-        """Sanitize error messages to prevent token leakage"""
-        # Redact tokens/keys
-        sanitized = re.sub(r'Bearer [A-Za-z0-9._-]+', 'Bearer [REDACTED]', error_msg)
-        sanitized = re.sub(r'["\']access_token["\']:\s*["\'][^"\']+["\']', '"access_token": "[REDACTED]"', sanitized)
-        sanitized = re.sub(r'token=[A-Za-z0-9._-]+', 'token=[REDACTED]', sanitized)
-        
-        # Limit error message length
-        if len(sanitized) > 200:
-            sanitized = sanitized[:200] + "... [truncated]"
-        
-        return sanitized
+
     async def fetch_order_history(self):
         """Fetch user's order history with beautiful formatting"""
         try:
@@ -801,60 +697,24 @@ class LumCLI:
         try:
             print(f"[*] Checking for updates.... (Current: v{VERSION})")
             async with httpx.AsyncClient(timeout=10.0) as client:
-                # Fetch code
-                resp = await client.get(f"{RAW_URL}/lum.py")
-                if resp.status_code != 200:
-                    print("[!] Update check failed")
-                    return
-                
-                # Fetch hash file
-                hash_resp = await client.get(f"{RAW_URL}/lum.py.sha256")
-                if hash_resp.status_code != 200:
-                    print("[!] Cannot verify update integrity - skipping")
-                    return
-                
-                expected_hash = hash_resp.text.strip().split()[0]
-                
-                # Verify hash
-                import hashlib
-                actual_hash = hashlib.sha256(resp.content).hexdigest()
-                
-                if actual_hash != expected_hash:
-                    print("\033[1;31m[!] Update verification FAILED - possible tampering detected!\033[0m")
-                    return
-                
-                # Check version
-                remote_match = re.search(r'VERSION = "([^"]+)"', resp.text)
-                if remote_match:
-                    remote_version = remote_match.group(1)
-                    
-                    if remote_version != VERSION:
-                        print(f"[!] New version found: {remote_version}")
-                        confirm = input("Update now? (yes/no): ").lower().strip()
+                resp = await client.get(RAW_URL)
+                if resp.status_code == 200:
+                    # Look for the VERSION string in the remote code
+                    remote_match = re.search(r'VERSION = "([^"]+)"', resp.text)
+                    if remote_match:
+                        remote_version = remote_match.group(1)
                         
-                        if confirm != 'yes':
-                            print("[*] Update skipped")
-                            return
-                        
-                        print("[*] Installing verified update...")
-                        current_file = os.path.abspath(__file__)
-                        
-                        # Backup current version
-                        backup = f"{current_file}.backup"
-                        import shutil
-                        shutil.copy2(current_file, backup)
-                        
-                        # Write new version
-                        with open(current_file, "wb") as f:
-                            f.write(resp.content)
-                        
-                        print(f"[✓] Update complete (backup: {backup})")
-                        print("[*] Please restart the CLI")
-                        sys.exit(0)
-                    else:
-                        print(f"\033[90m[v{VERSION}] Engine up to date\033[0m")
-        except Exception as e:
-            print(f"[!] Update check failed: {self._safe_error(str(e))}")
+                        if remote_version != VERSION:
+                            print(f"[!] New version found: {remote_version}. Installing...")
+                            current_file = os.path.abspath(__file__)
+                            with open(current_file, "w") as f:
+                                f.write(resp.text)
+                            print(f"[✔] Update complete. Please restart your command.")
+                            sys.exit(0) 
+                        else:
+                            print(f"\033[90m[v{VERSION}] Engine up to date\033[0m")
+        except Exception:
+            print("[!] Update check failed (Skipping...)")
     
     
     async def push_to_cloud(self):
@@ -905,7 +765,7 @@ class LumCLI:
             if response.status_code == 200:
                 print(f"\n\033[1;32m[LUM] Vault user_{sidhi_id} Synchronized.\033[0m")
             else:
-                print(f"[!] Server error: {self._safe_error(response.text)}")
+                print(f"\033[1;31m[!] Server Rejected: {response.text}\033[0m")
         except Exception as e:
             print(f"[!!!] CONNECTION ERROR: {e}")
     async def sync_clock(self):
@@ -919,31 +779,7 @@ class LumCLI:
                         self.time_offset = server_ts - time.time()
             except Exception:
                 pass
-    def _safe_path(self, filepath: str) -> Path:
-        """
-        Validates and sanitizes file paths to prevent path traversal attacks.
-        Returns a safe Path object or raises ValueError if dangerous.
-        """
-        # Convert to Path and normalize
-        clean = Path(filepath).resolve()
-        cwd = Path.cwd().resolve()
-        
-        # Check 1: Must be inside current working directory
-        try:
-            clean.relative_to(cwd)
-        except ValueError:
-            raise ValueError("[!] Security: Access outside working directory denied")
-        
-        # Check 2: No hidden/system files (starting with .)
-        if any(part.startswith('.') for part in clean.parts):
-            raise ValueError("[!] Security: Hidden file access denied")
-        
-        # Check 3: Allowed extensions only
-        allowed = {'.py', '.ipynb', '.c', '.cpp', '.h', '.txt', '.json'}
-        if clean.suffix and clean.suffix.lower() not in allowed:
-            raise ValueError(f"[!] Security: File type {clean.suffix} not allowed")
-        
-        return clean
+
     def get_synced_ts(self):
         return str(int(time.time() + self.time_offset))
     async def generate_notebook(self, input_file, output_file):
@@ -1046,7 +882,7 @@ class LumCLI:
                 # NEW: Auto-run the code locally to fill the 'outputs' section
                 
             else:
-                print(f"[!] Server error: {self._safe_error(response.text)}")
+                print(f"[!] Server Error: {response.status_code}")
         except Exception as e:
             print(f"[!] Notebook generation failed: {e}")
     def clean_response(self, text):
@@ -1158,8 +994,8 @@ class LumCLI:
                 }
 
                 self.config_file.write_text(json.dumps(config_data))
-                os.chmod(self.config_file, 0o600)  # ← ADD THIS LINE
                 self.token = data["access_token"]
+
                 print(f"[✔] Authenticated as {data['sidhi_id']}")
 
             else:
@@ -1285,7 +1121,7 @@ class LumCLI:
                     return response.content
                 data = response.json()
                 return self.clean_response(data.get("output"))
-            print(f"[!] Server error: {self._safe_error(response.text)}")
+            print(f"[!] Server Error {response.status_code}: {response.text}")
             return None
         except Exception as e:
             stop_event.set()
@@ -1425,22 +1261,18 @@ class LumCLI:
                 await asyncio.gather(receive(), send())
 
         except Exception as e:
-            print(f"\n[!] Connection failed: Server{e}")
+            print(f"\n[!] Connection failed: {e}")
 
 
     async def handle_command(self, args):
         await self.sync_clock()
-        # BEFORE processing AI commands (ask, write, fix, etc.), ADD:
-        
         
         if len(args) == 0:
             self.show_help()
             return
 
         cmd = args[0]
-        if cmd in ['ask', 'write', 'fix', 'trace', 'diff', 'algo', 'explain', 'inject', 'cells', 'format']:
-            if not self.rate_limiter.check(cmd):
-                return  # Block if rate limited
+
         # 🔐 LOGIN COMMAND (ADD THIS)
         if cmd == "login":
             await self.login()
@@ -1454,12 +1286,7 @@ class LumCLI:
                 return
 
             filename = args[1]
-           
-            try:
-                path = self._safe_path(args[1])  # 🔒 VALIDATE HERE
-            except ValueError as e:
-                print(str(e))
-                return
+            path = Path(filename)
 
             if path.exists():
                 content = path.read_text()
@@ -1481,33 +1308,24 @@ class LumCLI:
 
         # 2. ALGO: lum algo <filename> (from code) OR lum algo "question" <filename>
         elif cmd == "algo":
-            if len(args) < 2:
+            # Scenario A: lum algo file.c (Generate algo from code)
+            if os.path.exists(args[1]):
+                filename = args[1]
+                content = Path(filename).read_text()
+                result = await self.run_ai_task("algo", "from_code", content)
+                outfile = f"{Path(filename).stem}_algo.txt"
+            # Scenario B: lum algo "Sort list" sort.txt (Generate algo from prompt)
+            elif len(args) > 2:
+                prompt = args[1]
+                outfile = args[2]
+                result = await self.run_ai_task("algo", "standard", prompt)
+            else:
                 print("[!] Invalid usage. See help.")
-                return
-            
-            # Scenario A: lum algo file.c
-            try:
-                filepath = self._safe_path(args[1])
-                if filepath.exists():
-                    content = filepath.read_text()
-                    result = await self.run_ai_task("algo", "from_code", content)
-                    outfile = f"{filepath.stem}_algo.txt"
-                # Scenario B: lum algo "prompt" outfile.txt
-                elif len(args) > 2:
-                    prompt = args[1]
-                    outfile_path = self._safe_path(args[2])
-                    result = await self.run_ai_task("algo", "standard", prompt)
-                    outfile = str(outfile_path)
-                else:
-                    print("[!] Invalid usage. See help.")
-                    return
-            except ValueError as e:
-                print(str(e))
                 return
 
             if result:
                 Path(outfile).write_text(result)
-                print(f"[✓] Algorithm saved to {outfile}")
+                print(f"[✔] Algorithm saved to {outfile}")
 
         
         elif cmd == "watch":
@@ -1538,17 +1356,13 @@ class LumCLI:
         # 3. WRITE: lum write "prompt" <filename>
         elif cmd == "write":
             if len(args) > 2:
-                prompt = args[1]
-                try:
-                    filepath = self._safe_path(args[2])  # 🔒 VALIDATE
-                except ValueError as e:
-                    print(str(e))
-                    return
-                
+                prompt, filename = args[1], args[2]
                 result = await self.run_ai_task("write", "standard", prompt)
                 if result:
-                    filepath.write_text(result)  # ✅ Use validated path
-                    print(f"\n\033[1;36m[ Code written to {filepath.name} ]\033[0m")
+                    Path(filename).write_text(result)
+                    print(f"\n\033[1;36m[ Code written to {filename} ]\033[0m")
+            else:
+                print("[!] Usage: lum write \"prompt\" <filename>")
 
         
         elif cmd == "ask":
@@ -1560,11 +1374,6 @@ class LumCLI:
         elif cmd == "explain":
             if len(args) > 1:
                 filename = args[1]
-                try:
-                    filepath = self._safe_path(args[1])  # 🔒 VALIDATE HERE
-                except ValueError as e:
-                    print(str(e))
-                    return
                 if os.path.exists(filename):
                     content = Path(filename).read_text()
                     result = await self.run_ai_task("explain", "from_code", content)
@@ -1582,31 +1391,13 @@ class LumCLI:
                 print("[!] Usage: lum cells <questions.txt> <output.ipynb>")
             else:
                 await self.generate_notebook(args[1], args[2])
-            
-            # NEW:
-            if len(args) < 3:
-                print("[!] Usage: lum cells <questions.txt> <output.ipynb>")
-            else:
-                try:
-                    input_path = self._safe_path(args[1])
-                    output_path = self._safe_path(args[2])
-                except ValueError as e:
-                    print(str(e))
-                    return
-                await self.generate_notebook(str(input_path), str(output_path))
         elif cmd == "diff":
             await self.sync_clock()
             if len(args) > 2:
-                try:
-                    filepath1 = self._safe_path(args[1])  # 🔒 VALIDATE
-                    filepath2 = self._safe_path(args[2])  # 🔒 VALIDATE
-                except ValueError as e:
-                    print(str(e))
-                    return
-                
-                if filepath1.exists() and filepath2.exists():
-                    code1 = filepath1.read_text()
-                    code2 = filepath2.read_text()
+                file1, file2 = args[1], args[2]
+                if os.path.exists(file1) and os.path.exists(file2):
+                    code1 = Path(file1).read_text()
+                    code2 = Path(file2).read_text()
                     
                     payload = {
                         "mode": "diff",
@@ -1615,25 +1406,30 @@ class LumCLI:
                         "input2": code2
                     }
                     
+                                        # FIND THIS BLOCK IN YOUR FILE AND REPLACE THE HEADERS LINE:
                     print(f"[*] Comparing logic flow...")
                     try:
+                        # headers = {"Authorization": f"Bearer {self.token}"} <--- REMOVE THIS
                         response = await self.client.post(
                             f"{BASE_URL}/ai/execute",
                             json=payload,
-                            headers=self._signed_headers("/ai/execute")
+                            headers=self._signed_headers("/ai/execute") # <--- ADD THIS
                         )
                         if response.status_code == 200:
+                            # Use the same cleanup logic as other commands
                             raw_text = response.json().get("output")
                             result = self.clean_response(raw_text)
                             
-                            print(f"\n\033[1;96m[LOGIC DIFF]: {filepath1.name} vs {filepath2.name}\033[0m")
-                            print("─" * 60 + "\n" + result + "\n" + "─" * 60)
+                            print(f"\n\033[1;96m[LOGIC DIFF]: {file1} vs {file2}\033[0m")
+                            print("━" * 60 + "\n" + result + "\n" + "━" * 60)
                         else:
-                            print(f"[!] Server error: {self._safe_error(response.text)}")
+                            print(f"[!] Server error: {response.status_code}")
                     except Exception as e:
                         print(f"[!] Connection failed: {e}")
                 else:
                     print("[!] One or both files not found.")
+            else:
+                print("[!] Usage: lum diff <file1> <file2>")
         # 7. STREAM: lum stream <file>
         elif cmd == "stream":
             await self.sync_clock()
@@ -1663,7 +1459,6 @@ class LumCLI:
                 return
 
             filename = args[1]
-            
             if not os.path.exists(filename):
                 print(f"[!] File {filename} not found.")
                 return
@@ -1696,11 +1491,6 @@ class LumCLI:
                 return
 
             txt_file, folder_name = args[1], args[2]
-            try:
-                folder_name = InputSanitizer.sanitize_filename(folder_name)
-            except ValueError as e:
-                print(str(e))
-                return
 
             if not os.path.exists(txt_file):
                 print(f"[!] File {txt_file} not found.")
@@ -1744,18 +1534,14 @@ class LumCLI:
                 print("[!] Usage: lum format <filename.txt>")
                 return
 
-            try:
-                filepath = self._safe_path(args[1])
-            except ValueError as e:
-                print(str(e))
-                return
-            
-            if not filepath.exists():
-                print(f"[!] File {filepath.name} not found.")
+            filename = args[1]
+            if not os.path.exists(filename):
+                print(f"[!] File {filename} not found.")
                 return
 
-            content = filepath.read_text()
-            print(f"[*] Reformatting {filepath.name} via Lum Engine...")
+            content = Path(filename).read_text()
+            print(f"[*] Reformatting {filename} via Lum Engine...")
+            
             # Note: Changed endpoint to /ai/format specifically for this task
             endpoint = f"{BASE_URL}/ai/format"
                     # REPLACE IN BOTH BLOCKS:
@@ -1772,7 +1558,7 @@ class LumCLI:
                         Path(filename).write_text(self.clean_response(result))
                         print(f"[✔] {filename} is now formatted for injection.")
                 else:
-                    print(f"[!] Server error: {self._safe_error(response.text)}")
+                    print(f"[×] Format failed: {response.text}")
             except Exception as e:
                 print(f"[!] CLI Error: {e}")         
         
@@ -1781,13 +1567,11 @@ class LumCLI:
         # 8. FOLLOW: lum follow <user>
         elif cmd == "follow":
             if len(args) > 1:
-                try:
-                    username = InputSanitizer.sanitize_username(args[1])
-                except ValueError as e:
-                    print(str(e))
-                    return
                 handler = StreamHandler(self.token)
-                await handler.follow_user(username)
+                await handler.follow_user(args[1])
+
+            else:
+                print("[!] Usage: lum follow <username>")
         
         
         # Trace: lum trace <filename>
