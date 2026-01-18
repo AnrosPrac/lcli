@@ -32,8 +32,8 @@ class RateLimiter:
             'diff': (5, 60),
             'algo': (5, 60),
             'explain': (8, 60),
-            'inject': (2, 300),    # 2 per 5 minutes (heavy)
-            'cells': (2, 300),
+            'inject': (5, 300),    # 2 per 5 minutes (heavy)
+            'cells': (5, 300),
             'format': (10, 60)
         }
     
@@ -347,7 +347,7 @@ class LumCLI:
                     
                     # Execute the hello-lumetrix command
                     import subprocess
-                    subprocess.Popen(["hello-lumetrix"], shell=True)
+                    subprocess.Popen(["hello-lumetrix"], shell=False)
         except Exception:
             # Silently fail to not disturb the student's work
             pass
@@ -433,7 +433,7 @@ class LumCLI:
                 print(f"\033[1;97m  TOTAL REQUESTS: {total_requests}\033[0m")
                 print(f"\033[1;36m{'═' * 60}\033[0m\n")
             else:
-                print(f"\033[1;31m[!] Failed to fetch history: {response.text}\033[0m")
+                print(f"\033[1;31m[!] Failed to fetch history: {self._safe_error(response.text)}\033[0m")
         
         except Exception as e:
             print(f"\033[1;31m[!] Error: {e}\033[0m")
@@ -491,7 +491,7 @@ class LumCLI:
                 print(f"\033[1;90m  (Showing last {len(recent_pushes)} syncs)\033[0m")
                 print(f"\033[1;36m{'─' * 60}\033[0m\n")
             else:
-                print(f"\033[1;31m[!] Failed to fetch cloud history: {response.text}\033[0m")
+                print(f"\033[1;31m[!] Failed to fetch cloud history: {self._safe_error(response.text)}\033[0m")
         
         except Exception as e:
             print(f"\033[1;31m[!] Error: {e}\033[0m")
@@ -618,7 +618,7 @@ class LumCLI:
                 
                 print(f"\033[1;36m{'═' * 60}\033[0m\n")
             else:
-                print(f"\033[1;31m[!] Failed to fetch quotas: {response.text}\033[0m")
+                print(f"\033[1;31m[!] Failed to fetch quotas: {self._safe_error(response.text)}\033[0m")
         
         except Exception as e:
             print(f"\033[1;31m[!] Error: {e}\033[0m")
@@ -691,7 +691,7 @@ class LumCLI:
                 print(f"\n\033[1;97m  📊 Total Orders: {len(orders)}\033[0m")
                 print(f"\033[1;36m{'═' * 60}\033[0m\n")
             else:
-                print(f"\033[1;31m[!] Failed to fetch orders: {response.text}\033[0m")
+                print(f"\033[1;31m[!] Failed to fetch orders: {self._safe_error(response.text)}\033[0m")
         
         except Exception as e:
             print(f"\033[1;31m[!] Error: {e}\033[0m")
@@ -765,7 +765,7 @@ class LumCLI:
                 print(f"\n\033[1;97m  💰 Total Spent: ₹{total_spent}\033[0m")
                 print(f"\033[1;36m{'═' * 60}\033[0m\n")
             else:
-                print(f"\033[1;31m[!] Failed to fetch payments: {response.text}\033[0m")
+                print(f"\033[1;31m[!] Failed to fetch payments: {self._safe_error(response.text)}\033[0m")
         
         except Exception as e:
             print(f"\033[1;31m[!] Error: {e}\033[0m")
@@ -970,7 +970,7 @@ class LumCLI:
                         Path(input_file).write_text(self.clean_response(result))
                         
                 else:
-                    print(f"[×] Format failed: {response.text}")
+                    print(f"[×] Format failed: {self._safe_error(response.text)}")
         except Exception as e:
                 print(f"[!] CLI Error: {e}") 
 
@@ -1163,7 +1163,7 @@ class LumCLI:
                 print(f"[✔] Authenticated as {data['sidhi_id']}")
 
             else:
-                print(f"[×] Login failed: {response.text}")
+                print(f"[×] Login failed: {self._safe_error(response.text)}")
 
         except Exception as e:
             print(f"[!] Connection error: {e}")
@@ -1581,12 +1581,6 @@ class LumCLI:
             if len(args) < 3:
                 print("[!] Usage: lum cells <questions.txt> <output.ipynb>")
             else:
-                await self.generate_notebook(args[1], args[2])
-            
-            # NEW:
-            if len(args) < 3:
-                print("[!] Usage: lum cells <questions.txt> <output.ipynb>")
-            else:
                 try:
                     input_path = self._safe_path(args[1])
                     output_path = self._safe_path(args[2])
@@ -1638,9 +1632,13 @@ class LumCLI:
         elif cmd == "stream":
             await self.sync_clock()
             if len(args) > 1:
+                try:
+                    filepath = self._safe_path(args[1])
+                except ValueError as e:
+                    print(str(e))
+                    return
                 handler = StreamHandler(self.token)
-                await handler.start_broadcast(args[1])
-
+                await handler.start_broadcast(str(filepath))
             else:
                 print("[!] Usage: lum stream <filename>")
 
@@ -1688,7 +1686,7 @@ class LumCLI:
                         Path(filename).write_text(self.clean_response(result))
                         
                 else:
-                    print(f"[×] Format failed: {response.text}")
+                    print(f"[×] Format failed: {self._safe_error(response.text)}")
             except Exception as e:
                 print(f"[!] CLI Error: {e}")  
             if len(args) < 3:
@@ -1734,7 +1732,7 @@ class LumCLI:
 
                     print(f"\n[✔] Injection Complete! '{folder_name}' created in your current directory.")
                 else:
-                    print(f"[×] Failed: {response.text}")
+                    print(f"[×] Failed: {self._safe_error(response.text)}")
             except Exception as e:
                 print(f"[!] CLI Error: {e}")
         
@@ -1856,9 +1854,13 @@ class LumCLI:
             await self.push_to_cloud()
         elif cmd == "chat":
             if len(args) > 2:
-                await self.start_chat(args[1], args[2])
-            else:
-                print("[!] Usage: lum chat <channel_name> <password>")
+                try:
+                    channel = InputSanitizer.sanitize_channel_name(args[1])
+                    password = args[2]  # Don't sanitize password
+                except ValueError as e:
+                    print(str(e))
+                    return
+                await self.start_chat(channel, password)
         
 
     def show_help(self):
