@@ -1309,8 +1309,8 @@ class LumCLI:
             print(f"Token:      Active")
             print(f"Identity:   {public_key[:10]}...{public_key[-10:]}")
             print(f"Time Drift: {self.time_offset:.2f} seconds corrected")
-            print(f"Endpoint:   {BASE_URL}")
-            print(f"\033[1;32m[✔] System ready for Zero-Trust requests\033[0m")
+            
+            print(f"\033[1;32m[✔] System ready for requests\033[0m")
         except Exception as e:
             print(f"[!] Session Corrupted: {e}")
     async def logout(self):
