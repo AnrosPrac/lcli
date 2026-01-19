@@ -1861,10 +1861,13 @@ async def main():
         lum.show_help()
 
 if __name__ == "__main__":
+    if os.name == 'nt':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
     try:
-        # This wraps the entire engine in a safety net
         asyncio.run(main())
     except KeyboardInterrupt:
-        # Catches the global exit signal and shuts down silently
-        # without dumping a Python traceback
-        sys.exit(0)
+        pass
+    except RuntimeError as e:
+        if str(e) != "Event loop is closed":
+            raise
