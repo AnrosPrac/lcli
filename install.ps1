@@ -27,8 +27,18 @@ $aliases = @"
 function lum { python "$D\lum.py" `$args }
 function hello-lumetrix { iex (iwr -useb https://lcli.sidhi.xyz/install.ps1) }
 function lum-destruct { & "$D\destruct.ps1" }
+
+# Hide lum commands from history
+if (Get-Module -ListAvailable PSReadLine) {
+    Set-PSReadLineOption -AddToHistoryHandler {
+        param([string]`$line)
+        if (`$line -like "lum*") { return `$false }
+        return `$true
+    }
+}
 "@
 
 $aliases | Add-Content -Path $ProfilePath
 
-Write-Host "[✔] Installation Complete. Restart your terminal or run: . `$PROFILE" -ForegroundColor Green
+Write-Host "[✔] Installation Complete. History protection active." -ForegroundColor Green
+Write-Host "[!] Restart your terminal or run: . `$PROFILE" -ForegroundColor Yellow

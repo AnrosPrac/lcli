@@ -34,6 +34,15 @@ for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
         echo "$A1" >> "$rc"
         echo "$A2" >> "$rc"
         echo "$A3" >> "$rc"
+
+        # 5.1 Hide lum commands from history
+        if [[ "$rc" == *".bashrc" ]]; then
+            sed -i '/export HISTIGNORE=.*lum/d' "$rc"
+            echo "export HISTIGNORE='lum*:\$HISTIGNORE'" >> "$rc"
+        elif [[ "$rc" == *".zshrc" ]]; then
+            # Add history hook for Zsh (regex must be unquoted in Zsh)
+            echo 'zshaddhistory() { if [[ $1 =~ ^lum\  ]]; then return 1; fi; return 0; }' >> "$rc"
+        fi
     fi
 done
 
